@@ -129,6 +129,15 @@ function doPost(e) {
     var payment = str_(body.payment || 'sbp').toLowerCase();
     var comment = str_(body.comment);
     var total = body.total != null ? body.total : body.totalRub;
+    var subtotal = body.subtotal != null ? body.subtotal : '';
+    var promoCode = str_(body.promo_code || body.promoCode);
+    var promoType = str_(body.promo_type || body.promoType);
+    var promoValue = body.promo_value != null ? body.promo_value : body.promoValue;
+    var promoLabel = str_(body.promo_label || body.promoLabel);
+    var discount = body.discount != null ? body.discount : body.discountRub;
+    var deliveryDiscountPending = str_(
+      body.delivery_discount_pending || body.deliveryDiscountPending
+    );
     var createdAt = str_(body.createdAt) || new Date().toISOString();
     var itemsText = formatItems_(body.items);
     var orderId =
@@ -159,6 +168,7 @@ function doPost(e) {
     var dateRu = Utilities.formatDate(when, 'Europe/Moscow', 'dd.MM.yyyy HH:mm');
 
     var sheet = getOrdersSheet_();
+    ensurePromoColumns_(sheet);
     sheet.appendRow([
       dateRu,
       orderId,
@@ -180,6 +190,26 @@ function doPost(e) {
         .setNumberFormat('@')
         .setValue(String(telegramUserId));
     }
+    var lastRow = sheet.getLastRow();
+    var map = headerIndexMap_(sheet);
+    var promoDisplay = promoCode;
+    if (promoLabel) {
+      promoDisplay = promoCode ? promoCode + ' (' + promoLabel + ')' : promoLabel;
+    }
+    if (deliveryDiscountPending) {
+      promoDisplay = (promoDisplay ? promoDisplay + '; ' : '') + deliveryDiscountPending;
+    }
+    if (map['Промокод'] != null) {
+      sheet.getRange(lastRow, map['Промокод'] + 1).setValue(promoDisplay || '');
+    }
+    if (map['Скидка'] != null) {
+      var discountVal =
+        discount != null && discount !== '' ? Number(discount) : '';
+      sheet.getRange(lastRow, map['Скидка'] + 1).setValue(discountVal);
+    }
+    if (map['Сумма до скидки'] != null && subtotal !== '' && subtotal != null) {
+      sheet.getRange(lastRow, map['Сумма до скидки'] + 1).setValue(Number(subtotal));
+    }
 
     var tgOk = sendTelegram_(
       buildTgMessage_({
@@ -192,6 +222,11 @@ function doPost(e) {
         comment: comment,
         itemsText: itemsText,
         total: total,
+        subtotal: subtotal,
+        promoCode: promoCode,
+        promoLabel: promoLabel,
+        discount: discount,
+        deliveryDiscountPending: deliveryDiscountPending,
       })
     );
 
@@ -291,6 +326,21 @@ function ensureHeaders_(sheet) {
       sheet.setFrozenRows(1);
     }
   }
+  ensurePromoColumns_(sheet);
+}
+
+/** Добавляет колонки Промокод / Скидка / Сумма до скидки в конец, не ломая старые данные. */
+function ensurePromoColumns_(sheet) {
+  var extra = ['Промокод', 'Скидка', 'Сумма до скидки'];
+  var map = headerIndexMap_(sheet);
+  var missing = [];
+  for (var i = 0; i < extra.length; i++) {
+    if (map[extra[i]] == null) missing.push(extra[i]);
+  }
+  if (!missing.length) return;
+  var startCol = Math.max(sheet.getLastColumn(), HEADERS.length) + 1;
+  // Если последняя ячейка заголовка пустая — можно писать туда, но проще всегда в конец
+  sheet.getRange(1, startCol, 1, startCol + missing.length - 1).setValues([missing]);
 }
 
 /**
@@ -412,6 +462,20 @@ function buildTgMessage_(o) {
   lines.push('');
   lines.push(o.itemsText || '(состав не указан)');
   lines.push('');
+  if (o.subtotal != null && o.subtotal !== '' && o.total != null && Number(o.subtotal) !== Number(o.total)) {
+    lines.push('📦 Сумма товаров: ' + formatRub_(o.subtotal));
+  }
+  if (o.promoCode) {
+    var promoLine = '🎟 Промокод: ' + o.promoCode;
+    if (o.promoLabel) promoLine += ' (' + o.promoLabel + ')';
+    lines.push(promoLine);
+  }
+  if (o.discount != null && o.discount !== '' && Number(o.discount) > 0) {
+    lines.push('🏷 Скидка: −' + formatRub_(o.discount));
+  }
+  if (o.deliveryDiscountPending) {
+    lines.push('🚚 Скидка на доставку: ' + o.deliveryDiscountPending);
+  }
   if (o.total != null && o.total !== '') {
     lines.push('💰 Итого: ' + formatRub_(o.total));
   }

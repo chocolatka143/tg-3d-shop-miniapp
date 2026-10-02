@@ -1,5 +1,5 @@
 import './style.css';
-import { PRODUCTS, MATERIALS, COLORS, SIZES, SHOP, PAYMENT_METHODS, HOME_TABS, FAQ_ITEMS, PORTFOLIO_ITEMS, REVIEW_STUBS, LUCK_SEGMENTS } from './data.js';
+import { PRODUCTS, MATERIALS, COLORS, SIZES, SHOP, PAYMENT_METHODS, HOME_TABS, FAQ_ITEMS, PORTFOLIO_ITEMS, REVIEW_STUBS, LUCK_SEGMENTS, STATIC_PROMO_CODES, PROMO_EXPIRY_DAYS, DELIVERY_FEE_RUB } from './data.js';
 import {
   initTelegram,
   getTelegram,
@@ -15,6 +15,8 @@ import {
 const STORAGE_KEY = 'tg3d_cart_v1';
 const THEME_KEY = 'buber-theme';
 const ORDERS_KEY = 'tg3d_orders_v1';
+const PROMO_KEY = 'tg3d_promo_v1';
+const PROMO_USED_KEY = 'tg3d_promo_used_v1';
 const LUCK_SPIN_DURATION_MS = 3400;
 
 /** @typedef {{ type: 'product'|'custom', id: string, name: string, price: number, qty: number, emoji?: string, color?: string, material?: string, size?: string, stlName?: string, comment?: string, productColor?: string }} CartItem */
@@ -38,6 +40,7 @@ const state = {
     spinning: false,
     hasSpun: false,
     result: null,
+    promo: null,
     rotation: 0,
   },
   checkout: {
@@ -46,6 +49,10 @@ const state = {
     telegram: '',
     payment: 'sbp',
     comment: '',
+    promoInput: '',
+    /** @type {null | { code: string, type: string, value: number, label: string, source?: string, expiresAt?: string }} */
+    promoApplied: null,
+    promoError: '',
     error: '',
     submitting: false,
   },
@@ -114,6 +121,234 @@ function formatRub(n) {
     currency: 'RUB',
     maximumFractionDigits: 0,
   }).format(n);
+}
+
+function normalizePromoCode(code) {
+  return String(code || '')
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, '');
+}
+
+function loadUsedPromoCodes() {
+  try {
+    const list = JSON.parse(localStorage.getItem(PROMO_USED_KEY) || '[]');
+    return Array.isArray(list) ? list.map(normalizePromoCode).filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+}
+
+function markPromoUsed(code) {
+  const c = normalizePromoCode(code);
+  if (!c) return;
+  const used = loadUsedPromoCodes();
+  if (!used.includes(c)) {
+    used.push(c);
+    try {
+      localStorage.setItem(PROMO_USED_KEY, JSON.stringify(used.slice(-80)));
+    } catch (_) {
+      /* ignore */
+    }
+  }
+  const saved = loadSavedPromo();
+  if (saved && normalizePromoCode(saved.code) === c) {
+    clearSavedPromo();
+  }
+}
+
+function loadSavedPromo() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(PROMO_KEY) || 'null');
+    if (!raw || typeof raw !== 'object' || !raw.code) return null;
+    return raw;
+  } catch {
+    return null;
+  }
+}
+
+function savePromo(promo) {
+  try {
+    localStorage.setItem(PROMO_KEY, JSON.stringify(promo));
+  } catch (_) {
+    /* ignore */
+  }
+}
+
+function clearSavedPromo() {
+  try {
+    localStorage.removeItem(PROMO_KEY);
+  } catch (_) {
+    /* ignore */
+  }
+}
+
+function makeWheelPromoCode(prefix) {
+  const p = String(prefix || 'BX').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4) || 'BX';
+  const tail = Math.random().toString(36).slice(2, 6).toUpperCase();
+  return `${p}-${tail}`;
+}
+
+function promoExpiryIso(days = PROMO_EXPIRY_DAYS) {
+  const d = new Date();
+  d.setDate(d.getDate() + Math.max(1, Number(days) || 30));
+  return d.toISOString();
+}
+
+function isPromoExpired(promo) {
+  if (!promo || !promo.expiresAt) return false;
+  const t = Date.parse(promo.expiresAt);
+  return Number.isFinite(t) && t < Date.now();
+}
+
+function promoTypeLabel(type, value) {
+  if (type === 'order_percent') return `Скидка ${value}% на заказ`;
+  if (type === 'delivery_percent') return `Скидка ${value}% на доставку`;
+  return 'Промокод';
+}
+
+/** Каталог известных промо: статичные + сохранённый с колеса. */
+function knownPromoCatalog() {
+  const list = STATIC_PROMO_CODES.map((p) => ({
+    code: normalizePromoCode(p.code),
+    type: p.type,
+    value: Number(p.value) || 0,
+    label: p.label || promoTypeLabel(p.type, p.value),
+    source: 'static',
+    expiresAt: null,
+  }));
+  const saved = loadSavedPromo();
+  if (saved && saved.code) {
+    list.push({
+      code: normalizePromoCode(saved.code),
+      type: saved.type,
+      value: Number(saved.value) || 0,
+      label: saved.label || promoTypeLabel(saved.type, saved.value),
+      source: saved.source || 'wheel',
+      expiresAt: saved.expiresAt || null,
+    });
+  }
+  return list;
+}
+
+/**
+ * @returns {{ ok: true, promo: object } | { ok: false, error: string }}
+ */
+function resolvePromoCode(rawCode) {
+  const code = normalizePromoCode(rawCode);
+  if (!code) return { ok: false, error: 'Введите промокод' };
+
+  const used = loadUsedPromoCodes();
+  if (used.includes(code)) {
+    return { ok: false, error: 'Этот промокод уже использован на этом устройстве' };
+  }
+
+  const found = knownPromoCatalog().find((p) => p.code === code);
+  if (!found) return { ok: false, error: 'Промокод не найден' };
+  if (isPromoExpired(found)) return { ok: false, error: 'Срок действия промокода истёк' };
+  if (!found.value || found.value <= 0) return { ok: false, error: 'Промокод недействителен' };
+
+  return {
+    ok: true,
+    promo: {
+      code: found.code,
+      type: found.type,
+      value: found.value,
+      label: found.label,
+      source: found.source,
+      expiresAt: found.expiresAt,
+    },
+  };
+}
+
+function deliveryFeeRub() {
+  const n = Number(DELIVERY_FEE_RUB);
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : 0;
+}
+
+/**
+ * Итоги заказа с учётом промо.
+ * @returns {{ subtotal: number, deliveryFee: number, orderDiscount: number, deliveryDiscount: number, discountTotal: number, total: number, promo: object|null, deliveryNote: string }}
+ */
+function getOrderPricing(promo = state.checkout.promoApplied) {
+  const subtotal = cartTotal();
+  const deliveryFee = deliveryFeeRub();
+  let orderDiscount = 0;
+  let deliveryDiscount = 0;
+  let deliveryNote = '';
+
+  if (promo && promo.type === 'order_percent') {
+    orderDiscount = Math.round((subtotal * Number(promo.value)) / 100);
+    orderDiscount = Math.min(orderDiscount, subtotal);
+  } else if (promo && promo.type === 'delivery_percent') {
+    if (deliveryFee > 0) {
+      deliveryDiscount = Math.round((deliveryFee * Number(promo.value)) / 100);
+      deliveryDiscount = Math.min(deliveryDiscount, deliveryFee);
+    } else {
+      deliveryNote =
+        `Скидка ${promo.value}% на доставку сохранена. Сейчас доставка в сумме не учтена — применим при подтверждении заказа.`;
+    }
+  }
+
+  const discountTotal = orderDiscount + deliveryDiscount;
+  const total = Math.max(0, subtotal + deliveryFee - discountTotal);
+  return {
+    subtotal,
+    deliveryFee,
+    orderDiscount,
+    deliveryDiscount,
+    discountTotal,
+    total,
+    promo: promo || null,
+    deliveryNote,
+  };
+}
+
+function createPromoFromSegment(segment) {
+  if (!segment || !segment.promo) return null;
+  const { type, value, codePrefix } = segment.promo;
+  const code = makeWheelPromoCode(codePrefix);
+  return {
+    code,
+    type,
+    value: Number(value) || 0,
+    label: segment.result || promoTypeLabel(type, value),
+    source: 'wheel',
+    segmentId: segment.id,
+    createdAt: new Date().toISOString(),
+    expiresAt: promoExpiryIso(PROMO_EXPIRY_DAYS),
+  };
+}
+
+function applyPromoFromInput() {
+  syncCheckoutFromDom();
+  const result = resolvePromoCode(state.checkout.promoInput);
+  if (!result.ok) {
+    state.checkout.promoApplied = null;
+    state.checkout.promoError = result.error;
+    return false;
+  }
+  state.checkout.promoApplied = result.promo;
+  state.checkout.promoInput = result.promo.code;
+  state.checkout.promoError = '';
+  return true;
+}
+
+function clearAppliedPromo() {
+  state.checkout.promoApplied = null;
+  state.checkout.promoError = '';
+  state.checkout.promoInput = '';
+}
+
+/** Prefill checkout promo from wheel win (if unused). */
+function hydratePromoFromStorage() {
+  if (state.checkout.promoApplied) return;
+  const saved = loadSavedPromo();
+  if (!saved) return;
+  const resolved = resolvePromoCode(saved.code);
+  if (!resolved.ok) return;
+  state.checkout.promoApplied = resolved.promo;
+  state.checkout.promoInput = resolved.promo.code;
 }
 
 function navigate(screen, opts = {}) {
@@ -242,11 +477,13 @@ function syncCheckoutFromDom() {
   const phone = document.getElementById('co-phone');
   const telegram = document.getElementById('co-telegram');
   const comment = document.getElementById('co-comment');
+  const promo = document.getElementById('co-promo');
   const pay = document.querySelector('input[name="co-payment"]:checked');
   if (name) state.checkout.name = name.value.trim();
   if (phone) state.checkout.phone = phone.value.trim();
   if (telegram) state.checkout.telegram = telegram.value.trim();
   if (comment) state.checkout.comment = comment.value.trim();
+  if (promo) state.checkout.promoInput = promo.value.trim();
   if (pay) state.checkout.payment = pay.value;
 }
 
@@ -284,6 +521,21 @@ function formatOrderText(order) {
     lines.push(`${idx + 1}. ${i.name} × ${i.qty} — ${formatRub(i.price * i.qty)}${meta}${itemComment}`);
   });
   lines.push('');
+  if (order.subtotalRub != null && order.subtotalRub !== order.totalRub) {
+    lines.push(`Сумма товаров: ${formatRub(order.subtotalRub)}`);
+  }
+  if (order.deliveryFeeRub) {
+    lines.push(`Доставка: ${formatRub(order.deliveryFeeRub)}`);
+  }
+  if (order.promoCode) {
+    lines.push(`Промокод: ${order.promoCode}${order.promoLabel ? ` (${order.promoLabel})` : ''}`);
+  }
+  if (order.discountRub) {
+    lines.push(`Скидка: −${formatRub(order.discountRub)}`);
+  }
+  if (order.deliveryDiscountPending) {
+    lines.push(`Скидка на доставку: ${order.deliveryDiscountPending} (применим при расчёте доставки)`);
+  }
   lines.push(`Итого: ${formatRub(order.totalRub)}`);
   lines.push(`Оплата: ${paymentLabel(order.checkout.payment)}`);
   if (order.checkout.name) lines.push(`Имя: ${order.checkout.name}`);
@@ -540,6 +792,26 @@ function spinLuckWheel() {
   window.setTimeout(() => {
     state.luck.spinning = false;
     state.luck.result = selected;
+    const promo = createPromoFromSegment(selected);
+    if (promo) {
+      savePromo(promo);
+      state.luck.promo = promo;
+      // Автоподстановка в чекаут, если ещё нет другого применённого кода
+      if (!state.checkout.promoApplied) {
+        state.checkout.promoApplied = {
+          code: promo.code,
+          type: promo.type,
+          value: promo.value,
+          label: promo.label,
+          source: promo.source,
+          expiresAt: promo.expiresAt,
+        };
+        state.checkout.promoInput = promo.code;
+        state.checkout.promoError = '';
+      }
+    } else {
+      state.luck.promo = null;
+    }
     haptic('medium');
     if (state.screen === 'home' && state.homeTab === 'luck') render();
   }, LUCK_SPIN_DURATION_MS);
@@ -566,13 +838,56 @@ function renderLuckWheel() {
     const top = 50 - Math.cos(angle) * radius;
     return `<span class="wheel-label" style="left:${left.toFixed(2)}%;top:${top.toFixed(2)}%">${escapeHtml(segment.label)}</span>`;
   }).join('');
-  const result = state.luck.result
-    ? `<div class="luck-result" role="status">
-        <span class="luck-result-icon">${state.luck.result.label === 'Пусто' ? '🙂' : '🎉'}</span>
+
+  const saved = state.luck.promo || loadSavedPromo();
+  const isEmpty = state.luck.result && state.luck.result.label === 'Пусто';
+  let result = '';
+  if (state.luck.result) {
+    if (isEmpty) {
+      result = `<div class="luck-result" role="status">
+        <span class="luck-result-icon">🙂</span>
         <strong>${escapeHtml(state.luck.result.result)}</strong>
-        <small>${state.luck.result.label === 'Пусто' ? 'Попробуйте снова завтра.' : 'Покажите этот экран при оформлении заказа.'}</small>
-      </div>`
-    : '';
+        <small>Попробуйте снова в следующий раз.</small>
+      </div>`;
+    } else if (saved && saved.code) {
+      const exp = saved.expiresAt
+        ? new Date(saved.expiresAt).toLocaleDateString('ru-RU')
+        : '';
+      result = `<div class="luck-result" role="status">
+        <span class="luck-result-icon">🎉</span>
+        <strong>${escapeHtml(saved.label || state.luck.result.result)}</strong>
+        <div class="promo-code-box">
+          <span class="promo-code-label">Ваш промокод</span>
+          <code class="promo-code-value">${escapeHtml(saved.code)}</code>
+          <button type="button" class="btn btn-secondary btn-sm" data-action="copy-promo" data-code="${escapeHtml(saved.code)}">Скопировать</button>
+        </div>
+        <small>Введите код в корзине при оформлении.${exp ? ` Действует до ${escapeHtml(exp)}.` : ''} Один раз на устройстве.</small>
+      </div>`;
+    } else {
+      result = `<div class="luck-result" role="status">
+        <span class="luck-result-icon">🎉</span>
+        <strong>${escapeHtml(state.luck.result.result)}</strong>
+      </div>`;
+    }
+  } else if (saved && saved.code && !isPromoExpired(saved)) {
+    const used = loadUsedPromoCodes().includes(normalizePromoCode(saved.code));
+    if (!used) {
+      const exp = saved.expiresAt
+        ? new Date(saved.expiresAt).toLocaleDateString('ru-RU')
+        : '';
+      result = `<div class="luck-result" role="status">
+        <span class="luck-result-icon">🎫</span>
+        <strong>${escapeHtml(saved.label || 'Ваш приз')}</strong>
+        <div class="promo-code-box">
+          <span class="promo-code-label">Сохранённый промокод</span>
+          <code class="promo-code-value">${escapeHtml(saved.code)}</code>
+          <button type="button" class="btn btn-secondary btn-sm" data-action="copy-promo" data-code="${escapeHtml(saved.code)}">Скопировать</button>
+        </div>
+        <small>Уже можно применить в корзине.${exp ? ` До ${escapeHtml(exp)}.` : ''}</small>
+      </div>`;
+    }
+  }
+
   const buttonLabel = state.luck.spinning
     ? 'Колесо крутится…'
     : state.luck.hasSpun
@@ -584,7 +899,7 @@ function renderLuckWheel() {
       <div class="luck-heading">
         <span class="luck-kicker">Случайный приз</span>
         <h3 class="section-title" id="luck-title">Колесо удачи</h3>
-        <p class="tab-lead">Крутите колесо и ловите подарки от Бубер 3D.</p>
+        <p class="tab-lead">Крутите колесо и ловите промокод на скидку.</p>
       </div>
       <div class="wheel-wrap">
         <span class="wheel-pointer" aria-hidden="true">▼</span>
@@ -597,7 +912,7 @@ function renderLuckWheel() {
         ${buttonLabel}
       </button>
       ${result}
-      <p class="luck-note">Одна попытка за сеанс. Приз пока не сохраняется и промокод автоматически не создаётся.</p>
+      <p class="luck-note">Одна попытка за сеанс. Выигранный промокод сохраняется на устройстве и вводится в корзине.</p>
     </section>`;
 }
 
@@ -653,6 +968,16 @@ async function sendOrderWebhook(order) {
     payment: order.checkout.payment || 'sbp',
     comment: order.checkout.comment || '',
     items: order.items,
+    subtotal: order.subtotalRub != null ? order.subtotalRub : order.totalRub,
+    delivery_fee: order.deliveryFeeRub || 0,
+    promo_code: order.promoCode || '',
+    promo_type: order.promoType || '',
+    promo_value: order.promoValue != null ? order.promoValue : '',
+    promo_label: order.promoLabel || '',
+    discount: order.discountRub || 0,
+    discount_order: order.orderDiscountRub || 0,
+    discount_delivery: order.deliveryDiscountRub || 0,
+    delivery_discount_pending: order.deliveryDiscountPending || '',
     total: order.totalRub,
     createdAt: order.createdAt,
   };
@@ -689,6 +1014,8 @@ async function placeOrder() {
 
   const user = getUser();
   const tgContact = state.checkout.telegram.trim();
+  const pricing = getOrderPricing();
+  const promo = pricing.promo;
   const order = {
     id: makeOrderId(),
     status: 'Новый',
@@ -710,9 +1037,23 @@ async function placeOrder() {
       telegram: tgContact,
       payment: state.checkout.payment,
       comment: state.checkout.comment,
+      promoCode: promo?.code || '',
     },
     items: state.cart.map((i) => ({ ...i })),
-    totalRub: cartTotal(),
+    subtotalRub: pricing.subtotal,
+    deliveryFeeRub: pricing.deliveryFee,
+    promoCode: promo?.code || '',
+    promoType: promo?.type || '',
+    promoValue: promo?.value ?? null,
+    promoLabel: promo?.label || '',
+    orderDiscountRub: pricing.orderDiscount,
+    deliveryDiscountRub: pricing.deliveryDiscount,
+    discountRub: pricing.discountTotal,
+    deliveryDiscountPending:
+      promo && promo.type === 'delivery_percent' && pricing.deliveryFee <= 0
+        ? `${promo.value}% на доставку`
+        : '',
+    totalRub: pricing.total,
     note:
       'Заказ без онлайн-оплаты. Свяжемся для подтверждения. СБП — реквизиты в чат; наличные — при встрече.',
     webhookOk: false,
@@ -730,6 +1071,11 @@ async function placeOrder() {
     console.warn('Order webhook failed, fallback to copy/Telegram', err);
     order.webhookOk = false;
   }
+
+  if (promo?.code) {
+    markPromoUsed(promo.code);
+  }
+  clearAppliedPromo();
 
   state.lastOrder = order;
   saveOrderLocal(order);
@@ -759,7 +1105,7 @@ function updateMainButton() {
   if (onCheckoutScreens) {
     const text = state.checkout.submitting
       ? 'Отправка…'
-      : `Оформить заказ · ${formatRub(cartTotal())}`;
+      : `Оформить заказ · ${formatRub(getOrderPricing().total)}`;
     const usedTg = showMainButton(text, () => placeOrder());
     if (bar) bar.classList.toggle('hidden', !!usedTg);
   } else {
@@ -1088,14 +1434,57 @@ function renderCart() {
     ? `<p class="form-error" id="co-error">${escapeHtml(co.error)}</p>`
     : '<div id="co-error"></div>';
 
+  hydratePromoFromStorage();
+  const pricing = getOrderPricing();
+  const promoErr = co.promoError
+    ? `<p class="form-error promo-error">${escapeHtml(co.promoError)}</p>`
+    : '';
+  const promoOk = co.promoApplied
+    ? `<p class="promo-applied">✓ ${escapeHtml(co.promoApplied.label || co.promoApplied.code)}
+        <button type="button" class="link-btn" data-action="clear-promo">Сбросить</button>
+       </p>`
+    : '';
+  const deliveryNote = pricing.deliveryNote
+    ? `<p class="field-hint promo-delivery-note">${escapeHtml(pricing.deliveryNote)}</p>`
+    : '';
+
+  let totalsHtml = '';
+  if (pricing.discountTotal > 0 || pricing.deliveryFee > 0 || co.promoApplied) {
+    totalsHtml = `<div class="cart-totals">
+      <div class="cart-total-row"><span>Товары</span><span>${formatRub(pricing.subtotal)}</span></div>
+      ${
+        pricing.deliveryFee > 0
+          ? `<div class="cart-total-row"><span>Доставка</span><span>${formatRub(pricing.deliveryFee)}</span></div>`
+          : ''
+      }
+      ${
+        pricing.orderDiscount > 0
+          ? `<div class="cart-total-row discount"><span>Скидка на заказ</span><span>−${formatRub(pricing.orderDiscount)}</span></div>`
+          : ''
+      }
+      ${
+        pricing.deliveryDiscount > 0
+          ? `<div class="cart-total-row discount"><span>Скидка на доставку</span><span>−${formatRub(pricing.deliveryDiscount)}</span></div>`
+          : ''
+      }
+      <div class="cart-total">
+        <span>Итого</span>
+        <span class="sum">${formatRub(pricing.total)}</span>
+      </div>
+    </div>`;
+  } else {
+    totalsHtml = `<div class="cart-total">
+      <span>Итого</span>
+      <span class="sum">${formatRub(pricing.total)}</span>
+    </div>`;
+  }
+
   return `
     ${header('Корзина', { back: true })}
     <div class="screen">
       ${items}
-      <div class="cart-total">
-        <span>Итого</span>
-        <span class="sum">${formatRub(cartTotal())}</span>
-      </div>
+      ${totalsHtml}
+      ${deliveryNote}
 
       <section class="checkout-block">
         <h3 class="section-title">Оформление</h3>
@@ -1122,6 +1511,21 @@ function renderCart() {
         <p class="field-hint">Нужен хотя бы один контакт: телефон или @username.</p>
 
         <div class="form-group">
+          <label for="co-promo">Промокод <span class="opt">(необязательно)</span></label>
+          <div class="promo-row">
+            <input type="text" id="co-promo" autocomplete="off" placeholder="Например BUBER5" value="${escapeHtml(co.promoInput)}" ${co.promoApplied ? 'readonly' : ''} />
+            ${
+              co.promoApplied
+                ? `<button type="button" class="btn btn-secondary" data-action="clear-promo">Сброс</button>`
+                : `<button type="button" class="btn btn-secondary" data-action="apply-promo">Применить</button>`
+            }
+          </div>
+          ${promoOk}
+          ${promoErr}
+          <p class="field-hint">Код с колеса удачи или статичный (BUBER5 / BUBER7 / DOST5 / DOST7). Одноразово на устройстве.</p>
+        </div>
+
+        <div class="form-group">
           <label>Способ оплаты</label>
           <div class="pay-list">${payRadios}</div>
         </div>
@@ -1135,7 +1539,7 @@ function renderCart() {
         ${errHtml}
 
         <button class="btn btn-primary" data-action="checkout" ${state.checkout.submitting ? 'disabled' : ''}>${
-          state.checkout.submitting ? 'Отправка…' : `Оформить заказ · ${formatRub(cartTotal())}`
+          state.checkout.submitting ? 'Отправка…' : `Оформить заказ · ${formatRub(pricing.total)}`
         }</button>
         <button class="btn btn-secondary" data-action="home">Продолжить покупки</button>
       </section>
@@ -1425,6 +1829,26 @@ function bindEvents() {
         render();
         return;
       }
+      if (action === 'apply-promo') {
+        const ok = applyPromoFromInput();
+        haptic(ok ? 'medium' : 'light');
+        render();
+        return;
+      }
+      if (action === 'clear-promo') {
+        syncCheckoutFromDom();
+        clearAppliedPromo();
+        haptic('light');
+        render();
+        return;
+      }
+      if (action === 'copy-promo') {
+        const code = el.getAttribute('data-code') || state.luck.promo?.code || loadSavedPromo()?.code || '';
+        copyText(code).then((ok) => {
+          haptic(ok ? 'medium' : 'light');
+        });
+        return;
+      }
       if (action === 'checkout') {
         placeOrder();
         return;
@@ -1448,7 +1872,7 @@ function bindEvents() {
   });
 
   // live sync checkout fields
-  ['co-name', 'co-phone', 'co-telegram', 'co-comment'].forEach((fid) => {
+  ['co-name', 'co-phone', 'co-telegram', 'co-comment', 'co-promo'].forEach((fid) => {
     const el = document.getElementById(fid);
     if (!el) return;
     el.addEventListener('input', () => {
@@ -1489,6 +1913,7 @@ function bindEvents() {
 
 // Boot
 prefillCheckoutFromTg();
+hydratePromoFromStorage();
 render();
 
 if (tg) {

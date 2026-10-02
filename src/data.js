@@ -69,13 +69,36 @@ export const PRODUCTS = [
 ];
 
 /** Вкладки главной: каталог + контент */
-/** Сегменты колеса: weight — относительный шанс выпадения (сумма 100 = проценты). */
+/** Сегменты колеса: weight — относительный шанс (сумма ≈ 100).
+ *  promo: type order_percent | delivery_percent; value — процент; codePrefix — для генерации кода.
+ */
 export const LUCK_SEGMENTS = [
-  { id: 'empty', label: 'Пусто', result: 'В этот раз без подарка', weight: 50, color: '#ef6b62' },
-  { id: 'discount-10', label: '−10%', result: 'Скидка 10% на заказ', weight: 25, color: '#ff8a1f' },
-  { id: 'delivery', label: 'Доставка', result: 'Доставка в подарок', weight: 15, color: '#55c98a' },
-  { id: 'discount-500', label: '−500 ₽', result: 'Скидка 500 ₽ на заказ', weight: 10, color: '#ffca5c' },
+  { id: 'order-5', label: '−5%', result: 'Скидка 5% на заказ', weight: 25, color: '#ff8a1f', promo: { type: 'order_percent', value: 5, codePrefix: 'B5' } },
+  { id: 'order-7', label: '−7%', result: 'Скидка 7% на заказ', weight: 10, color: '#ffca5c', promo: { type: 'order_percent', value: 7, codePrefix: 'B7' } },
+  { id: 'delivery-5', label: 'Дст −5%', result: 'Скидка 5% на доставку', weight: 15, color: '#55c98a', promo: { type: 'delivery_percent', value: 5, codePrefix: 'D5' } },
+  { id: 'delivery-7', label: 'Дст −7%', result: 'Скидка 7% на доставку', weight: 5, color: '#4db6ac', promo: { type: 'delivery_percent', value: 7, codePrefix: 'D7' } },
+  { id: 'empty', label: 'Пусто', result: 'Повезёт в следующий раз', weight: 45, color: '#ef6b62' },
 ];
+
+/**
+ * Статичные промокоды (можно вводить вручную в чекауте).
+ * type: order_percent | delivery_percent
+ */
+export const STATIC_PROMO_CODES = [
+  { code: 'BUBER5', type: 'order_percent', value: 5, label: 'Скидка 5% на заказ' },
+  { code: 'BUBER7', type: 'order_percent', value: 7, label: 'Скидка 7% на заказ' },
+  { code: 'DOST5', type: 'delivery_percent', value: 5, label: 'Скидка 5% на доставку' },
+  { code: 'DOST7', type: 'delivery_percent', value: 7, label: 'Скидка 7% на доставку' },
+];
+
+/** Срок жизни промокода с колеса (дней). */
+export const PROMO_EXPIRY_DAYS = 30;
+
+/**
+ * Стоимость доставки в рублях. 0 = пока не считаем в чекауте
+ * (скидка на доставку сохраняется в заказе и применится, когда появится fee).
+ */
+export const DELIVERY_FEE_RUB = 0;
 
 export const HOME_TABS = [
   { id: 'all', label: 'Все' },

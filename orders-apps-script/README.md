@@ -11,7 +11,7 @@
 
 1. Откройте [Google Таблицы](https://sheets.google.com) и создайте **пустую** таблицу (например «Бубер 3D — Заказы»).
 2. Можно сразу переименовать первый лист в `Заказы` — скрипт сам создаст лист и заголовки, если их нет:
-   - Дата · **order_id** · **telegram_user_id** · Имя · Телефон · Username · Оплата · Комментарий · Состав · Сумма · Статус
+   - Дата · **order_id** · **telegram_user_id** · Имя · Телефон · Username · Оплата · Комментарий · Состав · Сумма · Статус · **Промокод** · **Скидка** · **Сумма до скидки** (последние три скрипт допишет сам)
 
 Если лист уже был со старыми колонками — добавьте `order_id` и `telegram_user_id` после «Дата» или начните с пустого листа (см. LK-ORDERS.md).
 
@@ -134,7 +134,12 @@ curl -sS 'https://script.google.com/macros/s/XXXX/exec?key=ВАШ_СЕКРЕТ&u
 | `payment` | `sbp` \| `cash` | Способ оплаты |
 | `comment` | string | Комментарий к заказу |
 | `items` | array \| string | Позиции или готовый текст |
-| `total` | number | Сумма (₽) |
+| `total` | number | Итого после скидки (₽) |
+| `subtotal` | number | Сумма товаров до скидки |
+| `promo_code` | string | Промокод |
+| `promo_type` | string | `order_percent` / `delivery_percent` |
+| `promo_value` | number | Процент скидки |
+| `discount` | number | Скидка в ₽ (может быть 0 при скидке на доставку без fee) |
 | `createdAt` | string ISO | Время создания |
 
 Авторизация: поле `secret` в JSON (предпочтительно), либо query `?key=`, либо заголовок `X-Webhook-Secret`.

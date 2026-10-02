@@ -1287,3 +1287,113 @@ html[data-theme='dark'] .luck-result strong {
   margin-top: 12px;
   text-align: center;
 }
+
+/* Промокоды */
+.promo-code-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 4px;
+  width: 100%;
+}
+
+.promo-code-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--tg-hint);
+}
+
+.promo-code-value {
+  display: inline-block;
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--brand-orange-deep);
+  background: color-mix(in srgb, var(--brand-orange) 14%, var(--tg-bg));
+  border: 1.5px dashed color-mix(in srgb, var(--brand-orange) 55%, transparent);
+}
+
+html[data-theme='dark'] .promo-code-value {
+  color: var(--brand-orange);
+}
+
+.btn-sm {
+  padding: 6px 12px;
+  font-size: 0.82rem;
+  width: auto;
+  min-height: 34px;
+}
+
+.promo-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.promo-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.promo-row .btn {
+  width: auto;
+  flex-shrink: 0;
+  padding-left: 14px;
+  padding-right: 14px;
+}
+
+.promo-applied {
+  margin: 8px 0 0;
+  color: var(--brand-green, #2ecc71);
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.promo-error {
+  margin-top: 8px;
+}
+
+.link-btn {
+  margin-left: 8px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--tg-link);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.cart-totals {
+  margin: 8px 0 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cart-total-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: var(--tg-hint);
+  font-size: 0.92rem;
+}
+
+.cart-total-row.discount {
+  color: var(--brand-orange-deep);
+  font-weight: 600;
+}
+
+html[data-theme='dark'] .cart-total-row.discount {
+  color: var(--brand-orange);
+}
+
+.promo-delivery-note {
+  margin: 0 0 10px;
+}
