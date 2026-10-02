@@ -1,5 +1,5 @@
 import './style.css';
-import { PRODUCTS, MATERIALS, COLORS, SIZES, SHOP, PAYMENT_METHODS } from './data.js';
+import { PRODUCTS, MATERIALS, COLORS, SIZES, SHOP, PAYMENT_METHODS, HOME_TABS, FAQ_ITEMS, PORTFOLIO_STUBS, REVIEW_STUBS } from './data.js';
 import {
   initTelegram,
   getTelegram,
@@ -21,6 +21,7 @@ const ORDERS_KEY = 'tg3d_orders_v1';
 const state = {
   screen: 'home', // home | product | custom | cart | success
   productId: null,
+  homeTab: 'all', // all | filament | figures | faq | portfolio | reviews
   // Previous logical routes for the in-app and Telegram back buttons.
   history: [],
   cart: loadCart(),
@@ -495,9 +496,20 @@ function header(title, { back, cart, brand } = {}) {
   `;
 }
 
-function renderHome() {
-  const cards = PRODUCTS.map(
-    (p) => `
+function productsForTab(tab) {
+  if (tab === 'filament') {
+    return PRODUCTS.filter((p) => p.category === 'filament' || p.id === 'p-filament');
+  }
+  return PRODUCTS;
+}
+
+function renderProductCards(list) {
+  if (!list.length) {
+    return `<div class="tab-empty"><div class="emoji">📭</div><p>Пока нет товаров в этой категории</p></div>`;
+  }
+  return `<div class="grid">${list
+    .map(
+      (p) => `
     <article class="card" data-action="open-product" data-id="${p.id}">
       <div class="card-img" style="background:${p.color}33">${p.emoji}</div>
       <div class="card-body">
@@ -505,10 +517,96 @@ function renderHome() {
         <div class="price">${formatRub(p.price)}</div>
         <p class="short">${escapeHtml(p.short)}</p>
       </div>
-    </article>
-  `
-  ).join('');
+    </article>`
+    )
+    .join('')}</div>`;
+}
 
+function renderTabs() {
+  const tabs = HOME_TABS.map(
+    (t) => `
+    <button type="button" class="tab-chip ${state.homeTab === t.id ? 'active' : ''}"
+      data-action="home-tab" data-id="${t.id}" role="tab"
+      aria-selected="${state.homeTab === t.id ? 'true' : 'false'}">${escapeHtml(t.label)}</button>`
+  ).join('');
+  return `<nav class="tabs-bar" role="tablist" aria-label="Разделы">${tabs}</nav>`;
+}
+
+function renderTabContent() {
+  const tab = state.homeTab;
+  if (tab === 'all') {
+    return `
+      <h3 class="section-title">Каталог</h3>
+      ${renderProductCards(productsForTab('all'))}`;
+  }
+  if (tab === 'filament') {
+    return `
+      <h3 class="section-title">Филамент</h3>
+      ${renderProductCards(productsForTab('filament'))}`;
+  }
+  if (tab === 'figures') {
+    return `
+      <div class="placeholder-panel">
+        <div class="emoji">🧍</div>
+        <h3>Фигурки</h3>
+        <p class="placeholder-badge">В разработке</p>
+        <p>Скоро здесь появятся готовые фигурки. Пока можно заказать через «Свой вариант».</p>
+        <button class="btn btn-primary" data-action="custom">✨ Свой вариант</button>
+      </div>`;
+  }
+  if (tab === 'faq') {
+    const items = FAQ_ITEMS.map(
+      (item) => `
+      <details class="faq-item">
+        <summary>${escapeHtml(item.q)}</summary>
+        <p>${escapeHtml(item.a)}</p>
+      </details>`
+    ).join('');
+    const u = (SHOP.telegramUsername || '').replace(/^@/, '');
+    const tgLink = u
+      ? `<a class="btn btn-primary" href="https://t.me/${escapeHtml(u)}" target="_blank" rel="noopener">Написать @${escapeHtml(u)}</a>`
+      : '';
+    return `
+      <h3 class="section-title">Как заказать</h3>
+      <div class="faq-list">${items}</div>
+      ${tgLink}
+      <button class="btn btn-secondary" data-action="custom">Свой вариант →</button>`;
+  }
+  if (tab === 'portfolio') {
+    const cards = PORTFOLIO_STUBS.map(
+      (p) => `
+      <article class="portfolio-card">
+        <div class="portfolio-img">${p.emoji}</div>
+        <h4>${escapeHtml(p.title)}</h4>
+        <span class="placeholder-badge">${escapeHtml(p.note)}</span>
+      </article>`
+    ).join('');
+    return `
+      <h3 class="section-title">Портфолио</h3>
+      <p class="tab-lead">Примеры работ появятся здесь. Пока — заглушки.</p>
+      <div class="portfolio-grid">${cards}</div>
+      <p class="tab-soon">Скоро</p>`;
+  }
+  if (tab === 'reviews') {
+    const cards = REVIEW_STUBS.map(
+      (r) => `
+      <article class="review-card">
+        <div class="review-top">
+          <strong>${escapeHtml(r.name)}</strong>
+          <span class="review-stars">${'★'.repeat(r.stars)}${'☆'.repeat(Math.max(0, 5 - r.stars))}</span>
+        </div>
+        <p>${escapeHtml(r.text)}</p>
+      </article>`
+    ).join('');
+    return `
+      <h3 class="section-title">Отзывы</h3>
+      <p class="tab-lead">Демо-отзывы. Реальные появятся после заказов.</p>
+      <div class="reviews-list">${cards}</div>`;
+  }
+  return renderProductCards(PRODUCTS);
+}
+
+function renderHome() {
   return `
     ${header('Бубер 3D', { brand: true })}
     <div class="screen">
@@ -520,8 +618,8 @@ function renderHome() {
         <p>Выберите готовый товар или опишите свой вариант — материал, цвет, размер и STL.</p>
         <button class="btn-custom" data-action="custom">✨ Свой вариант</button>
       </div>
-      <h3 class="section-title">Каталог</h3>
-      <div class="grid">${cards}</div>
+      ${renderTabs()}
+      <div class="tab-panel" role="tabpanel">${renderTabContent()}</div>
     </div>
   `;
 }
@@ -836,6 +934,12 @@ function bindEvents() {
         return;
       }
       if (action === 'home') return navigate('home');
+      if (action === 'home-tab') {
+        state.homeTab = id || 'all';
+        haptic('light');
+        render();
+        return;
+      }
       if (action === 'cart') return navigate('cart');
       if (action === 'custom') return navigate('custom');
       if (action === 'open-product') return navigate('product', { productId: id });

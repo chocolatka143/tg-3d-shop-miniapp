@@ -9,6 +9,7 @@ export const PRODUCTS = [
     color: '#e74c3c',
     emoji: '🔑',
     material: 'PLA',
+    category: 'accessories',
   },
   {
     id: 'p2',
@@ -19,6 +20,7 @@ export const PRODUCTS = [
     color: '#3498db',
     emoji: '🧍',
     material: 'PLA',
+    category: 'figures',
   },
   {
     id: 'p3',
@@ -29,6 +31,7 @@ export const PRODUCTS = [
     color: '#2ecc71',
     emoji: '📦',
     material: 'PETG',
+    category: 'parts',
   },
   {
     id: 'p4',
@@ -39,6 +42,7 @@ export const PRODUCTS = [
     color: '#9b59b6',
     emoji: '🪴',
     material: 'PLA',
+    category: 'decor',
   },
   {
     id: 'p5',
@@ -49,6 +53,7 @@ export const PRODUCTS = [
     color: '#f39c12',
     emoji: '⚙️',
     material: 'PETG',
+    category: 'parts',
   },
   {
     id: 'p-filament',
@@ -59,6 +64,61 @@ export const PRODUCTS = [
     color: '#ff8a1f',
     emoji: '🧵',
     material: 'PLA',
+    category: 'filament',
+  },
+];
+
+/** Вкладки главной: каталог + контент */
+export const HOME_TABS = [
+  { id: 'all', label: 'Все' },
+  { id: 'filament', label: 'Филамент' },
+  { id: 'figures', label: 'Фигурки' },
+  { id: 'faq', label: 'FAQ' },
+  { id: 'portfolio', label: 'Портфолио' },
+  { id: 'reviews', label: 'Отзывы' },
+];
+
+export const FAQ_ITEMS = [
+  {
+    q: 'Как заказать?',
+    a: 'Выберите товар в каталоге или нажмите «Свой вариант», заполните параметры и оформите заказ в корзине. Мы свяжемся для подтверждения.',
+  },
+  {
+    q: 'Как оплатить?',
+    a: 'СБП — перевод по реквизитам после подтверждения заказа. Наличные — при встрече или самовывозе в Москве.',
+  },
+  {
+    q: 'Свой STL / кастом',
+    a: 'Через «Свой вариант»: материал, цвет, размер и файл .stl / .obj / .3mf. Оценим и уточним цену в чате.',
+  },
+  {
+    q: 'Связаться с нами',
+    a: 'Telegram: @bubershop3d — напишите по заказу, срокам или вопросам.',
+  },
+];
+
+export const PORTFOLIO_STUBS = [
+  { emoji: '🔑', title: 'Брелки и мерч', note: 'Скоро фото' },
+  { emoji: '🧍', title: 'Фигурки', note: 'Скоро фото' },
+  { emoji: '🪴', title: 'Декор', note: 'Скоро фото' },
+  { emoji: '⚙️', title: 'Прототипы', note: 'Скоро фото' },
+];
+
+export const REVIEW_STUBS = [
+  {
+    name: 'Алексей',
+    text: 'Заказал брелок — качество супер, ответили быстро.',
+    stars: 5,
+  },
+  {
+    name: 'Мария',
+    text: 'Печать по моему STL, всё совпало с размерами.',
+    stars: 5,
+  },
+  {
+    name: 'Игорь',
+    text: 'Удобно оформить в Mini App, жду ещё работы в портфолио :)',
+    stars: 4,
   },
 ];
 
