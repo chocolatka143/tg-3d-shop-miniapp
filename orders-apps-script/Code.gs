@@ -1,5 +1,6 @@
 /**
  * Бубер 3D — приём заказов в Google Таблицу + уведомление в Telegram.
+ * Список заказов пользователя для ЛК: GET ?key=&userId=
  *
  * Script Properties (Проект → Настройки проекта → Свойства скрипта):
  *   BOT_TOKEN        — токен бота от @BotFather
@@ -9,11 +10,15 @@
  * Деплой: Развернуть → Новое развёртывание → Веб-приложение
  *   Выполнять от имени: Меня
  *   У кого есть доступ: Все
+ *
+ * См. также LK-ORDERS.md в корне репозитория.
  */
 
 var SHEET_NAME = 'Заказы';
 var HEADERS = [
   'Дата',
+  'order_id',
+  'telegram_user_id',
   'Имя',
   'Телефон',
   'Username',
@@ -24,10 +29,35 @@ var HEADERS = [
   'Статус',
 ];
 
+/**
+ * GET:
+ *   ?key=SECRET              — health-check
+ *   ?key=SECRET&userId=123   — заказы этого telegram_user_id (для ЛК)
+ *
+ * MVP: userId с клиента (initDataUnsafe). Позже — verify initData.
+ */
 function doGet(e) {
   if (!checkSecret_(e)) {
-    return json_({ ok: false, error: 'unauthorized' }, 401);
+    return json_({ ok: false, error: 'unauthorized' });
   }
+
+  var userId = '';
+  if (e && e.parameter && e.parameter.userId != null) {
+    userId = String(e.parameter.userId).trim();
+  }
+
+  if (userId) {
+    try {
+      var orders = listOrdersByUser_(userId);
+      return json_({ ok: true, orders: orders });
+    } catch (err) {
+      return json_({
+        ok: false,
+        error: String(err && err.message ? err.message : err),
+      });
+    }
+  }
+
   return json_({
     ok: true,
     service: 'buber3d-orders',
@@ -42,8 +72,9 @@ function doGet(e) {
  * doOptions оставлен на всякий случай.
  */
 function doOptions(e) {
-  return ContentService.createTextOutput('')
-    .setMimeType(ContentService.MimeType.TEXT);
+  return ContentService.createTextOutput('').setMimeType(
+    ContentService.MimeType.TEXT
+  );
 }
 
 function doPost(e) {
@@ -65,6 +96,18 @@ function doPost(e) {
     var total = body.total != null ? body.total : body.totalRub;
     var createdAt = str_(body.createdAt) || new Date().toISOString();
     var itemsText = formatItems_(body.items);
+    var orderId =
+      str_(body.order_id || body.orderId) ||
+      'ord_' + Utilities.getUuid().replace(/-/g, '').slice(0, 12);
+    var telegramUserId = str_(
+      body.telegram_user_id != null
+        ? body.telegram_user_id
+        : body.telegramUserId != null
+          ? body.telegramUserId
+          : body.user && body.user.id != null
+            ? body.user.id
+            : ''
+    );
 
     if (!name && !phone && !username) {
       return json_({ ok: false, error: 'need_contact' });
@@ -83,6 +126,8 @@ function doPost(e) {
     var sheet = getOrdersSheet_();
     sheet.appendRow([
       dateRu,
+      orderId,
+      telegramUserId,
       name,
       phone,
       username,
@@ -93,20 +138,26 @@ function doPost(e) {
       'Новый',
     ]);
 
-    var tgOk = sendTelegram_(buildTgMessage_({
-      dateRu: dateRu,
-      name: name,
-      phone: phone,
-      username: username,
-      paymentLabel: paymentLabel,
-      comment: comment,
-      itemsText: itemsText,
-      total: total,
-    }));
+    var tgOk = sendTelegram_(
+      buildTgMessage_({
+        dateRu: dateRu,
+        orderId: orderId,
+        name: name,
+        phone: phone,
+        username: username,
+        paymentLabel: paymentLabel,
+        comment: comment,
+        itemsText: itemsText,
+        total: total,
+      })
+    );
 
-    return json_({ ok: true, telegram: tgOk });
+    return json_({ ok: true, telegram: tgOk, order_id: orderId });
   } catch (err) {
-    return json_({ ok: false, error: String(err && err.message ? err.message : err) });
+    return json_({
+      ok: false,
+      error: String(err && err.message ? err.message : err),
+    });
   }
 }
 
@@ -135,7 +186,7 @@ function checkSecret_(e) {
       h['X-WEBHOOK-SECRET'] ||
       '';
   }
-  // Иногда postData / query в path
+  // Иногда postData / key в queryString
   if (!provided && e && e.queryString) {
     var m = String(e.queryString).match(/(?:^|&)key=([^&]+)/);
     if (m) {
@@ -169,7 +220,6 @@ function getOrdersSheet_() {
 }
 
 function ensureHeaders_(sheet) {
-  var lastCol = Math.max(sheet.getLastColumn(), HEADERS.length);
   var range = sheet.getRange(1, 1, 1, HEADERS.length);
   var values = range.getValues()[0];
   var empty = values.every(function (c) {
@@ -191,6 +241,75 @@ function ensureHeaders_(sheet) {
       sheet.setFrozenRows(1);
     }
   }
+}
+
+/**
+ * Индексы колонок по заголовкам (устойчиво к ручной перестановке, если заголовки на месте).
+ */
+function headerIndexMap_(sheet) {
+  var lastCol = Math.max(sheet.getLastColumn(), HEADERS.length);
+  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var map = {};
+  for (var i = 0; i < headers.length; i++) {
+    var key = String(headers[i] || '').trim();
+    if (key) map[key] = i;
+  }
+  return map;
+}
+
+function listOrdersByUser_(userId) {
+  var sheet = getOrdersSheet_();
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+
+  var map = headerIndexMap_(sheet);
+  var uidCol = map['telegram_user_id'];
+  if (uidCol == null) {
+    throw new Error('missing_column_telegram_user_id');
+  }
+
+  var lastCol = Math.max(sheet.getLastColumn(), HEADERS.length);
+  var data = sheet.getRange(2, 1, lastRow, lastCol).getValues();
+  var want = String(userId).trim();
+  var out = [];
+
+  for (var r = data.length - 1; r >= 0; r--) {
+    var row = data[r];
+    var cellUid = String(row[uidCol] != null ? row[uidCol] : '').trim();
+    if (cellUid !== want) continue;
+
+    out.push({
+      order_id: cell_(row, map, 'order_id'),
+      date: cell_(row, map, 'Дата'),
+      telegram_user_id: cellUid,
+      name: cell_(row, map, 'Имя'),
+      phone: cell_(row, map, 'Телефон'),
+      username: cell_(row, map, 'Username'),
+      payment: cell_(row, map, 'Оплата'),
+      comment: cell_(row, map, 'Комментарий'),
+      items: cell_(row, map, 'Состав'),
+      total: numOrRaw_(row, map, 'Сумма'),
+      status: cell_(row, map, 'Статус') || 'Новый',
+    });
+  }
+  return out;
+}
+
+function cell_(row, map, header) {
+  var idx = map[header];
+  if (idx == null) return '';
+  var v = row[idx];
+  if (v == null) return '';
+  return String(v);
+}
+
+function numOrRaw_(row, map, header) {
+  var idx = map[header];
+  if (idx == null) return '';
+  var v = row[idx];
+  if (v === '' || v == null) return '';
+  var n = Number(v);
+  return isNaN(n) ? String(v) : n;
 }
 
 function formatItems_(items) {
@@ -228,6 +347,7 @@ function buildTgMessage_(o) {
   var lines = [];
   lines.push('🛒 Новый заказ «Бубер 3D»');
   lines.push('📅 ' + o.dateRu);
+  if (o.orderId) lines.push('🆔 ' + o.orderId);
   lines.push('');
   lines.push(o.itemsText || '(состав не указан)');
   lines.push('');

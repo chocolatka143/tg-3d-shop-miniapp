@@ -19,7 +19,7 @@ const ORDERS_KEY = 'tg3d_orders_v1';
 /** @typedef {{ type: 'product'|'custom', id: string, name: string, price: number, qty: number, emoji?: string, color?: string, material?: string, size?: string, stlName?: string, comment?: string, productColor?: string }} CartItem */
 
 const state = {
-  screen: 'home', // home | product | custom | cart | success
+  screen: 'home', // home | product | custom | cart | success | orders
   productId: null,
   homeTab: 'all', // all | filament | figures | faq | portfolio | reviews
   // Previous logical routes for the in-app and Telegram back buttons.
@@ -303,6 +303,23 @@ function saveOrderLocal(order) {
   }
 }
 
+function loadLocalOrders() {
+  try {
+    const list = JSON.parse(localStorage.getItem(ORDERS_KEY) || '[]');
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
+
+function makeOrderId() {
+  return `ord_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function statusLabel(status) {
+  return status || 'Новый';
+}
+
 async function copyText(text) {
   try {
     if (navigator.clipboard?.writeText) {
@@ -340,7 +357,14 @@ async function sendOrderWebhook(order) {
   }
 
   const username = (order.checkout.telegram || '').replace(/^@/, '').trim();
+  const tgUserId =
+    order.telegramUserId ??
+    order.user?.id ??
+    getUser()?.id ??
+    '';
   const payload = {
+    order_id: order.id || '',
+    telegram_user_id: tgUserId,
     name: order.checkout.name || '',
     phone: order.checkout.phone || '',
     username,
@@ -384,9 +408,12 @@ async function placeOrder() {
   const user = getUser();
   const tgContact = state.checkout.telegram.trim();
   const order = {
+    id: makeOrderId(),
+    status: 'Новый',
     createdAt: new Date().toISOString(),
     shop: SHOP.name,
     city: SHOP.city,
+    telegramUserId: user?.id ?? null,
     user: user
       ? {
           id: user.id,
@@ -483,6 +510,7 @@ function header(title, { back, cart, brand } = {}) {
       }
       ${titleHtml}
       <button class="btn-icon btn-theme" data-action="toggle-theme" aria-label="${themeLabel}" title="${themeLabel}">${themeIcon}</button>
+      <button class="btn-icon" data-action="orders" aria-label="Мои заказы" title="Мои заказы">📋</button>
       ${
         cart !== false
           ? `<button class="btn-icon" data-action="cart" aria-label="Корзина">
@@ -617,6 +645,7 @@ function renderHome() {
         <h2>Печать на заказ</h2>
         <p>Выберите готовый товар или опишите свой вариант — материал, цвет, размер и STL.</p>
         <button class="btn-custom" data-action="custom">✨ Свой вариант</button>
+        <button class="btn btn-secondary btn-orders-link" data-action="orders">📋 Мои заказы</button>
       </div>
       ${renderTabs()}
       <div class="tab-panel" role="tabpanel">${renderTabContent()}</div>
@@ -829,6 +858,72 @@ function renderCart() {
   `;
 }
 
+
+function renderOrders() {
+  const local = loadLocalOrders();
+  const hasWebhook = !!(SHOP.orderWebhookUrl || '').trim();
+
+  let body;
+  if (local.length) {
+    const cards = local
+      .map((o) => {
+        const id = o.id || '—';
+        const status = statusLabel(o.status);
+        const when = o.createdAt
+          ? new Date(o.createdAt).toLocaleString('ru-RU')
+          : '—';
+        const total =
+          o.totalRub != null ? formatRub(o.totalRub) : o.total != null ? formatRub(o.total) : '—';
+        const itemsCount = Array.isArray(o.items) ? o.items.length : 0;
+        const itemsHint = itemsCount
+          ? o.items
+              .slice(0, 2)
+              .map((i) => i.name)
+              .filter(Boolean)
+              .join(', ') + (itemsCount > 2 ? '…' : '')
+          : '—';
+        return `
+      <article class="order-card">
+        <div class="order-card-top">
+          <strong class="order-id">${escapeHtml(id)}</strong>
+          <span class="order-status">${escapeHtml(status)}</span>
+        </div>
+        <div class="order-meta">${escapeHtml(when)}</div>
+        <div class="order-items">${escapeHtml(itemsHint)}</div>
+        <div class="order-total">${escapeHtml(total)}</div>
+      </article>`;
+      })
+      .join('');
+    body = `
+      <p class="tab-lead">Заказы с этого устройства. Статусы с таблицы появятся после подключения webhook.</p>
+      <div class="orders-list">${cards}</div>`;
+  } else if (!hasWebhook) {
+    body = `
+      <div class="placeholder-panel">
+        <div class="emoji">📋</div>
+        <h3>Мои заказы</h3>
+        <p>Заказы появятся после подключения таблицы</p>
+        <p class="tab-lead" style="margin-top:8px">Пока можно оформить заказ и скопировать его в Telegram — история на устройстве появится здесь.</p>
+        <button class="btn btn-primary" data-action="home">В каталог</button>
+      </div>`;
+  } else {
+    body = `
+      <div class="placeholder-panel">
+        <div class="emoji">📋</div>
+        <h3>Пока нет заказов</h3>
+        <p>Оформите заказ в корзине — он появится здесь. Синхронизация статусов с таблицей — следующий шаг.</p>
+        <button class="btn btn-primary" data-action="home">В каталог</button>
+      </div>`;
+  }
+
+  return `
+    ${header('Мои заказы', { back: true })}
+    <div class="screen">
+      ${body}
+    </div>
+  `;
+}
+
 function renderSuccess() {
   const order = state.lastOrder;
   const text = order?.text || '';
@@ -861,6 +956,7 @@ function renderSuccess() {
         <div class="order-summary" id="order-summary">${escapeHtml(text)}</div>
         <p class="copy-status" id="copy-status" hidden></p>
         ${contactBlock}
+        <button class="btn btn-secondary" data-action="orders">Мои заказы</button>
         <button class="btn btn-secondary" data-action="home">В каталог</button>
       </div>
     </div>
@@ -889,6 +985,9 @@ function render() {
       break;
     case 'success':
       html = renderSuccess();
+      break;
+    case 'orders':
+      html = renderOrders();
       break;
     default:
       html = renderHome();
@@ -941,6 +1040,7 @@ function bindEvents() {
         return;
       }
       if (action === 'cart') return navigate('cart');
+      if (action === 'orders') return navigate('orders');
       if (action === 'custom') return navigate('custom');
       if (action === 'open-product') return navigate('product', { productId: id });
       if (action === 'add-product') {

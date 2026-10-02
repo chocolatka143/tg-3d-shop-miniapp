@@ -9,3 +9,5 @@
 Код приёмника: `orders-apps-script/Code.gs`.
 
 В Mini App URL и секрет задаются в `src/data.js` (`SHOP.orderWebhookUrl`, `SHOP.orderWebhookSecret`). Пока пусто — магазин работает в режиме «скопировать заказ + написать в Telegram». Реальные секреты в git не коммитить.
+
+Личный кабинет (статусы, колонки `order_id` / `telegram_user_id`, GET списка): **[LK-ORDERS.md](LK-ORDERS.md)**.

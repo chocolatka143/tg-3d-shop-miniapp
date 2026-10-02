@@ -1003,3 +1003,70 @@ html[data-theme='dark'] .placeholder-badge {
   font-size: 0.88rem;
   line-height: 1.45;
 }
+
+/* Мои заказы (ЛК stub) */
+
+.btn-orders-link {
+  margin-top: 10px;
+  width: 100%;
+}
+
+.orders-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.order-card {
+  background: var(--tg-secondary-bg);
+  border: 1.5px solid var(--card-border);
+  border-radius: var(--card-radius);
+  padding: 14px;
+}
+
+.order-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.order-id {
+  font-size: 0.82rem;
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.order-status {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--brand-orange-deep);
+  background: color-mix(in srgb, var(--brand-orange) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--brand-orange) 40%, transparent);
+  border-radius: 999px;
+  padding: 3px 10px;
+}
+
+html[data-theme='dark'] .order-status {
+  color: var(--brand-orange);
+}
+
+.order-meta {
+  color: var(--tg-hint);
+  font-size: 0.8rem;
+  margin-bottom: 4px;
+}
+
+.order-items {
+  font-size: 0.88rem;
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+
+.order-total {
+  font-weight: 700;
+  color: var(--tg-link);
+  font-size: 0.95rem;
+}

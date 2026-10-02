@@ -1,14 +1,19 @@
 # Приём заказов: Google Таблица + Telegram
 
-Маленький скрипт Google Apps Script принимает JSON от Mini App, пишет строку на лист **«Заказы»** и шлёт вам сообщение в Telegram.
+Маленький скрипт Google Apps Script принимает JSON от Mini App, пишет строку на лист **«Заказы»** и шлёт вам сообщение в Telegram.  
+Для ЛК: **GET** с `userId` возвращает заказы этого Telegram-пользователя.
 
 Секреты (`BOT_TOKEN`, `CHAT_ID`, `WEBHOOK_SECRET`) хранятся только в свойствах скрипта Google — **не коммитьте их в git**.
+
+Схема статусов и колонок: **[../LK-ORDERS.md](../LK-ORDERS.md)**.
 
 ## 1. Таблица
 
 1. Откройте [Google Таблицы](https://sheets.google.com) и создайте **пустую** таблицу (например «Бубер 3D — Заказы»).
 2. Можно сразу переименовать первый лист в `Заказы` — скрипт сам создаст лист и заголовки, если их нет:
-   - Дата · Имя · Телефон · Username · Оплата · Комментарий · Состав · Сумма · Статус
+   - Дата · **order_id** · **telegram_user_id** · Имя · Телефон · Username · Оплата · Комментарий · Состав · Сумма · Статус
+
+Если лист уже был со старыми колонками — добавьте `order_id` и `telegram_user_id` после «Дата» или начните с пустого листа (см. LK-ORDERS.md).
 
 ## 2. Apps Script
 
@@ -66,13 +71,15 @@ orderWebhookSecret: 'тот_же_WEBHOOK_SECRET',
 
 ## 6. Проверка curl
 
-Подставьте свой URL и секрет:
+### POST — новый заказ
 
 ```bash
 curl -sS -X POST \
   'https://script.google.com/macros/s/XXXX/exec?key=ВАШ_СЕКРЕТ' \
   -H 'Content-Type: text/plain;charset=utf-8' \
   -d '{
+    "order_id": "ord_test_001",
+    "telegram_user_id": 123456789,
     "name": "Тест",
     "phone": "+79990001122",
     "username": "testuser",
@@ -86,34 +93,45 @@ curl -sS -X POST \
   }'
 ```
 
-Ожидается JSON вроде `{"ok":true,"telegram":true}`.  
-В таблице появится строка, в Telegram — сообщение о заказе.
+Ожидается JSON вроде `{"ok":true,"telegram":true,"order_id":"ord_test_001"}`.  
+В таблице появится строка со статусом **Новый**, в Telegram — сообщение о заказе.
 
-Проверка «жив ли» приёмник (GET):
+### GET — health / список для ЛК
 
 ```bash
+# Жив ли приёмник
 curl -sS 'https://script.google.com/macros/s/XXXX/exec?key=ВАШ_СЕКРЕТ'
+
+# Заказы пользователя (telegram_user_id)
+curl -sS 'https://script.google.com/macros/s/XXXX/exec?key=ВАШ_СЕКРЕТ&userId=123456789'
 ```
 
-## 7. Формат JSON от Mini App
+Ответ списка: `{ "ok": true, "orders": [ { "order_id", "date", "status", … } ] }`.
 
-| Поле         | Тип            | Описание |
-|--------------|----------------|----------|
-| `name`       | string         | Имя |
-| `phone`      | string         | Телефон |
-| `username`   | string         | Telegram без обязательного `@` |
-| `payment`    | `sbp` \| `cash`| Способ оплаты |
-| `comment`    | string         | Комментарий к заказу |
-| `items`      | array \| string| Позиции или готовый текст |
-| `total`      | number         | Сумма (₽) |
-| `createdAt`  | string ISO     | Время создания |
+## 7. Формат JSON от Mini App (POST)
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `order_id` | string | Уникальный id заказа (генерит Mini App) |
+| `telegram_user_id` | number \| string | `initDataUnsafe.user.id` |
+| `name` | string | Имя |
+| `phone` | string | Телефон |
+| `username` | string | Telegram без обязательного `@` |
+| `payment` | `sbp` \| `cash` | Способ оплаты |
+| `comment` | string | Комментарий к заказу |
+| `items` | array \| string | Позиции или готовый текст |
+| `total` | number | Сумма (₽) |
+| `createdAt` | string ISO | Время создания |
 
 Авторизация: query `?key=WEBHOOK_SECRET` (предпочтительно для браузера) или заголовок `X-Webhook-Secret`.
 
 > **CORS:** браузерный `POST` с `Content-Type: application/json` часто упирается в preflight. Mini App шлёт тело как **`text/plain`** с JSON-строкой — так запрос «простой» и доходит до Apps Script без OPTIONS. В `Code.gs` есть `doOptions` на всякий случай.
 
+> **Безопасность ЛК:** MVP передаёт `userId` с клиента. Перед публичным ЛК нужна проверка подписи Telegram `initData` (см. LK-ORDERS.md).
+
 ## Если что-то не так
 
 - `{"ok":false,"error":"unauthorized"}` — неверный или пустой `WEBHOOK_SECRET` / `key`.
+- `missing_column_telegram_user_id` — на листе нет колонки; обновите заголовки.
 - Строка есть, Telegram молчит — проверьте `BOT_TOKEN`, `CHAT_ID` и что вы написали боту `/start`.
 - «Нужны права» при деплое — заново подтвердите доступ к таблице и `https://api.telegram.org`.
