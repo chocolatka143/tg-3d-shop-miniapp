@@ -167,13 +167,20 @@ function doPost(e) {
     var sheet = getOrdersSheet_();
     ensurePromoColumns_(sheet);
 
-    // Последовательный order_id: 1000, 1001… Источник истины — таблица.
-    // Старые ord_/ping- не трогаем и не учитываем в нумерации.
+    // Клиентский order_id (pending_/ord_/ping-) ИГНОРИРУЕМ.
+    // Источник истины — таблица: 1000, 1001…
+    var clientOrderId = str_(body.order_id || body.orderId);
     var lock = LockService.getScriptLock();
     lock.waitLock(15000);
     var orderId;
+    var lastRowLocked;
+    var mapLocked;
     try {
+      // Всегда свой номер. clientOrderId (pending_/ord_/…) только для логов.
       orderId = nextOrderId_(sheet);
+      if (clientOrderId) {
+        Logger.log('ignore client order_id=' + clientOrderId + ' -> ' + orderId);
+      }
       sheet.appendRow([
         dateRu,
         orderId,
@@ -187,28 +194,18 @@ function doPost(e) {
         total != null && total !== '' ? Number(total) : '',
         'Новый',
       ]);
-      var lastRowLocked = sheet.getLastRow();
-      var oidCol = HEADERS.indexOf('order_id') + 1;
-      if (oidCol > 0) {
-        sheet
-          .getRange(lastRowLocked, oidCol)
-          .setNumberFormat('@')
-          .setValue(String(orderId));
-      }
+      lastRowLocked = sheet.getLastRow();
+      mapLocked = headerIndexMap_(sheet);
+      // Пишем order_id по заголовку (не по фиксированной колонке B) —
+      // и перезаписываем, если клиентский pending_ как-то попал в строку.
+      writeTextCol_(sheet, lastRowLocked, mapLocked, 'order_id', orderId);
+      writeTextCol_(sheet, lastRowLocked, mapLocked, 'telegram_user_id', telegramUserId);
     } finally {
       lock.releaseLock();
     }
 
-    // Sheets иначе превращает длинный id в Number / 1.23E+09
-    if (telegramUserId) {
-      var uidCol = HEADERS.indexOf('telegram_user_id') + 1;
-      sheet
-        .getRange(sheet.getLastRow(), uidCol)
-        .setNumberFormat('@')
-        .setValue(String(telegramUserId));
-    }
-    var lastRow = sheet.getLastRow();
-    var map = headerIndexMap_(sheet);
+    var lastRow = lastRowLocked || sheet.getLastRow();
+    var map = mapLocked || headerIndexMap_(sheet);
     var promoDisplay = promoCode;
     if (promoLabel) {
       promoDisplay = promoCode ? promoCode + ' (' + promoLabel + ')' : promoLabel;
@@ -361,9 +358,32 @@ function ensurePromoColumns_(sheet) {
 }
 
 
+
+/**
+ * Временные / устаревшие id с клиента — не сохраняем в таблицу.
+ * pending_* — локальный id Mini App до ответа webhook.
+ * ord_* / ping-* — старые схемы нумерации.
+ */
+function isThrowawayOrderId_(raw) {
+  var s = String(raw || '').trim();
+  if (!s) return true;
+  if (/^pending_/i.test(s)) return true;
+  if (/^ord_/i.test(s)) return true;
+  if (/^ping-/i.test(s)) return true;
+  return false;
+}
+
+/** Записать текстовое значение в колонку по имени заголовка (формат @). */
+function writeTextCol_(sheet, row, map, header, value) {
+  var idx = map[header];
+  if (idx == null) return;
+  var v = value == null ? '' : String(value);
+  sheet.getRange(row, idx + 1).setNumberFormat('@').setValue(v);
+}
+
 /**
  * Следующий номер заказа: max(числовые order_id) + 1, минимум 1000.
- * Игнорирует ord_*, ping-*, пустые и нечисловые значения.
+ * Игнорирует pending_*, ord_*, ping-*, пустые и нечисловые значения.
  * @return {string}
  */
 function nextOrderId_(sheet) {
@@ -380,6 +400,7 @@ function nextOrderId_(sheet) {
   for (var i = 0; i < values.length; i++) {
     var raw = String(values[i][0] || '').trim();
     if (!raw) continue;
+    if (isThrowawayOrderId_(raw)) continue;
     // только целые числа (строка или число), без префиксов
     if (!/^\d+$/.test(raw)) continue;
     var n = parseInt(raw, 10);

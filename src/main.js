@@ -578,9 +578,13 @@ function loadLocalOrders() {
   }
 }
 
-/** Временный id до ответа таблицы. Финальный номер (1000+) выдаёт Apps Script. */
+/** Локальный временный id (только в UI/localStorage). В Sheet не уходит. */
 function makeOrderId() {
   return `pending_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function isTempOrderId(id) {
+  return /^pending_/i.test(String(id || ''));
 }
 
 const STATUS_LABELS = {
@@ -959,9 +963,10 @@ async function sendOrderWebhook(order) {
     order.user?.id ??
     getUser()?.id ??
     '';
+  // order_id с клиента не шлём (pending_*): номер 1000+ выдаёт Apps Script.
   const payload = {
     secret,
-    order_id: order.id || '',
+    order_id: '',
     telegram_user_id: tgUserId,
     name: order.checkout.name || '',
     phone: order.checkout.phone || '',
@@ -1072,7 +1077,8 @@ async function placeOrder() {
   try {
     const result = await sendOrderWebhook(order);
     order.webhookOk = !!result.sent;
-    if (result.order_id) {
+    // Финальный номер — только из ответа Script ({ ok, order_id: "1000"… }).
+    if (result.order_id && !isTempOrderId(result.order_id)) {
       order.id = String(result.order_id);
       order.text = formatOrderText(order);
     }
