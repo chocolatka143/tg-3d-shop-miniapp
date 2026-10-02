@@ -13,7 +13,7 @@
  *   BOT_TOKEN        — токен бота от @BotFather
  *   CHAT_ID          — ваш chat id (куда слать уведомления о новых заказах)
  *   WEBHOOK_SECRET   — общий секрет (в JSON body.secret / ?key= / X-Webhook-Secret)
- *   TEST_CHAT_ID     — опционально: chat id для testStatusPush_()
+ *   TEST_CHAT_ID     — опционально: chat id для testStatusPush()
  *
  * Деплой: Развернуть → Новое развёртывание → Веб-приложение
  *   Выполнять от имени: Меня
@@ -749,15 +749,15 @@ function telegramIdString_(v) {
 }
 
 /**
- * Тест пуша из редактора: выберите testStatusPush_ → Выполнить.
+ * Тест пуша из редактора: выберите testStatusPush → Выполнить.
  * Цель: Script Property TEST_CHAT_ID, иначе первый непустой telegram_user_id на листе,
  * иначе CHAT_ID. В журнале: ok/code/body ответа Telegram.
  */
-function testStatusPush_() {
+function testStatusPush() {
   var props = props_();
   var token = String(props.getProperty('BOT_TOKEN') || '').trim();
   if (!token) {
-    Logger.log('testStatusPush_: BOT_TOKEN missing in Script Properties');
+    Logger.log('testStatusPush: BOT_TOKEN missing in Script Properties');
     return;
   }
 
@@ -771,7 +771,7 @@ function testStatusPush_() {
   chatId = telegramIdString_(chatId) || str_(chatId);
   if (!chatId) {
     Logger.log(
-      'testStatusPush_: no chat id — set TEST_CHAT_ID or fill telegram_user_id / CHAT_ID'
+      'testStatusPush: no chat id — set TEST_CHAT_ID or fill telegram_user_id / CHAT_ID'
     );
     return;
   }
@@ -786,7 +786,7 @@ function testStatusPush_() {
 
   var result = sendTelegramTo_(chatId, msg);
   Logger.log(
-    'testStatusPush_: chat=' +
+    'testStatusPush: chat=' +
       chatId +
       ' ok=' +
       result.ok +
