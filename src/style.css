@@ -222,14 +222,17 @@ body {
   border-radius: var(--card-radius);
   overflow: hidden;
   cursor: pointer;
-  border: 1px solid color-mix(in srgb, var(--brand-black) 8%, transparent);
-  box-shadow: 0 1px 3px color-mix(in srgb, var(--brand-black) 6%, transparent);
-  transition: border-color 0.15s;
+  border: 1.5px solid color-mix(in srgb, var(--brand-orange) 42%, #edd9c8);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--brand-black) 5%, transparent);
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 
+.card:hover,
 .card:active {
-  border-color: var(--tg-button);
+  border-color: color-mix(in srgb, var(--brand-orange) 65%, #edd9c8);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--brand-orange) 16%, transparent);
 }
+
 
 .card-img {
   height: 110px;
