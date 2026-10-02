@@ -578,8 +578,9 @@ function loadLocalOrders() {
   }
 }
 
+/** Временный id до ответа таблицы. Финальный номер (1000+) выдаёт Apps Script. */
 function makeOrderId() {
-  return `ord_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  return `pending_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 }
 
 const STATUS_LABELS = {
@@ -998,7 +999,11 @@ async function sendOrderWebhook(order) {
     const msg = (data && data.error) || `http_${res.status}`;
     throw new Error(msg);
   }
-  return { sent: true, telegram: !!data.telegram };
+  return {
+    sent: true,
+    telegram: !!data.telegram,
+    order_id: data.order_id ? String(data.order_id) : '',
+  };
 }
 
 async function placeOrder() {
@@ -1067,6 +1072,10 @@ async function placeOrder() {
   try {
     const result = await sendOrderWebhook(order);
     order.webhookOk = !!result.sent;
+    if (result.order_id) {
+      order.id = String(result.order_id);
+      order.text = formatOrderText(order);
+    }
   } catch (err) {
     console.warn('Order webhook failed, fallback to copy/Telegram', err);
     order.webhookOk = false;

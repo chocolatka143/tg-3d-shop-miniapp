@@ -54,7 +54,7 @@
 | # | Колонка | Источник | Пример |
 |---|---------|----------|--------|
 | A | Дата | Apps Script (МСК) | `02.10.2026 21:30` |
-| B | order_id | Mini App при оформлении | `ord_1727…_a3f2` |
+| B | order_id | Apps Script при создании строки | `1000`, `1001`… (старые `ord_`/`ping-` остаются) |
 | C | telegram_user_id | `Telegram.WebApp.initDataUnsafe.user.id` | `123456789` |
 | D | Имя | форма checkout | `Марк` |
 | E | Телефон | форма | `+7…` |

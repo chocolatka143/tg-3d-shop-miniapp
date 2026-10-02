@@ -140,9 +140,6 @@ function doPost(e) {
     );
     var createdAt = str_(body.createdAt) || new Date().toISOString();
     var itemsText = formatItems_(body.items);
-    var orderId =
-      str_(body.order_id || body.orderId) ||
-      'ord_' + Utilities.getUuid().replace(/-/g, '').slice(0, 12);
     var telegramUserId = str_(
       body.telegram_user_id != null
         ? body.telegram_user_id
@@ -169,19 +166,39 @@ function doPost(e) {
 
     var sheet = getOrdersSheet_();
     ensurePromoColumns_(sheet);
-    sheet.appendRow([
-      dateRu,
-      orderId,
-      telegramUserId,
-      name,
-      phone,
-      username,
-      paymentLabel,
-      comment,
-      itemsText,
-      total != null && total !== '' ? Number(total) : '',
-      'Новый',
-    ]);
+
+    // Последовательный order_id: 1000, 1001… Источник истины — таблица.
+    // Старые ord_/ping- не трогаем и не учитываем в нумерации.
+    var lock = LockService.getScriptLock();
+    lock.waitLock(15000);
+    var orderId;
+    try {
+      orderId = nextOrderId_(sheet);
+      sheet.appendRow([
+        dateRu,
+        orderId,
+        telegramUserId,
+        name,
+        phone,
+        username,
+        paymentLabel,
+        comment,
+        itemsText,
+        total != null && total !== '' ? Number(total) : '',
+        'Новый',
+      ]);
+      var lastRowLocked = sheet.getLastRow();
+      var oidCol = HEADERS.indexOf('order_id') + 1;
+      if (oidCol > 0) {
+        sheet
+          .getRange(lastRowLocked, oidCol)
+          .setNumberFormat('@')
+          .setValue(String(orderId));
+      }
+    } finally {
+      lock.releaseLock();
+    }
+
     // Sheets иначе превращает длинный id в Number / 1.23E+09
     if (telegramUserId) {
       var uidCol = HEADERS.indexOf('telegram_user_id') + 1;
@@ -341,6 +358,34 @@ function ensurePromoColumns_(sheet) {
   var startCol = Math.max(sheet.getLastColumn(), HEADERS.length) + 1;
   // Если последняя ячейка заголовка пустая — можно писать туда, но проще всегда в конец
   sheet.getRange(1, startCol, 1, startCol + missing.length - 1).setValues([missing]);
+}
+
+
+/**
+ * Следующий номер заказа: max(числовые order_id) + 1, минимум 1000.
+ * Игнорирует ord_*, ping-*, пустые и нечисловые значения.
+ * @return {string}
+ */
+function nextOrderId_(sheet) {
+  var map = headerIndexMap_(sheet);
+  var col = map['order_id'];
+  var start = 1000;
+  if (col == null) return String(start);
+
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return String(start);
+
+  var values = sheet.getRange(2, col + 1, lastRow, col + 1).getDisplayValues();
+  var maxNum = start - 1;
+  for (var i = 0; i < values.length; i++) {
+    var raw = String(values[i][0] || '').trim();
+    if (!raw) continue;
+    // только целые числа (строка или число), без префиксов
+    if (!/^\d+$/.test(raw)) continue;
+    var n = parseInt(raw, 10);
+    if (!isNaN(n) && n > maxNum) maxNum = n;
+  }
+  return String(maxNum + 1);
 }
 
 /**
