@@ -464,6 +464,7 @@ async function sendOrderWebhook(order) {
     getUser()?.id ??
     '';
   const payload = {
+    secret,
     order_id: order.id || '',
     telegram_user_id: tgUserId,
     name: order.checkout.name || '',

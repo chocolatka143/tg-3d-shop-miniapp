@@ -174,11 +174,19 @@ function checkSecret_(e) {
     return false;
   }
   var provided = '';
-  if (e && e.parameter && e.parameter.key) {
+  // Секрет в JSON — надёжнее: Google редирект часто съедает ?key=
+  if (e && e.postData && e.postData.contents) {
+    try {
+      var tmp = JSON.parse(String(e.postData.contents));
+      if (tmp && (tmp.secret || tmp.key)) {
+        provided = String(tmp.secret || tmp.key).trim();
+      }
+    } catch (err0) {}
+  }
+  if (!provided && e && e.parameter && e.parameter.key) {
     provided = String(e.parameter.key);
   }
   if (!provided && e && e.headers) {
-    // Apps Script может отдавать заголовки в разном регистре
     var h = e.headers;
     provided =
       h['X-Webhook-Secret'] ||
@@ -186,7 +194,6 @@ function checkSecret_(e) {
       h['X-WEBHOOK-SECRET'] ||
       '';
   }
-  // Иногда postData / key в queryString
   if (!provided && e && e.queryString) {
     var m = String(e.queryString).match(/(?:^|&)key=([^&]+)/);
     if (m) {
