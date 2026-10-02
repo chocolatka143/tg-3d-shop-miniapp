@@ -71,7 +71,7 @@ export const SIZES = ['S (до 5 см)', 'M (5–15 см)', 'L (15–25 см)', 
 export const SHOP = {
   name: 'Бубер 3D',
   city: 'Москва',
-  telegramUsername: 'mariamrnv',
+  telegramUsername: 'bubershop3d',
   sbpHint: 'Реквизиты СБП пришлём в чат после подтверждения заказа',
 };
 
