@@ -37,6 +37,9 @@ var HEADERS = [
   'Состав',
   'Сумма',
   'Статус',
+  'Промокод',
+  'Скидка',
+  'Сумма до скидки',
 ];
 
 /**
@@ -165,11 +168,23 @@ function doPost(e) {
     var dateRu = Utilities.formatDate(when, 'Europe/Moscow', 'dd.MM.yyyy HH:mm');
 
     var sheet = getOrdersSheet_();
-    ensurePromoColumns_(sheet);
+    // ensureHeaders_ уже вызван в getOrdersSheet_; promo-колонки гарантированы.
 
     // Клиентский order_id (pending_/ord_/ping-) ИГНОРИРУЕМ.
     // Источник истины — таблица: 1000, 1001…
     var clientOrderId = str_(body.order_id || body.orderId);
+    var promoDisplay = promoCode;
+    if (promoLabel) {
+      promoDisplay = promoCode ? promoCode + ' (' + promoLabel + ')' : promoLabel;
+    }
+    if (deliveryDiscountPending) {
+      promoDisplay = (promoDisplay ? promoDisplay + '; ' : '') + deliveryDiscountPending;
+    }
+    var discountVal =
+      discount != null && discount !== '' ? Number(discount) : '';
+    var subtotalVal =
+      subtotal !== '' && subtotal != null ? Number(subtotal) : '';
+
     var lock = LockService.getScriptLock();
     lock.waitLock(15000);
     var orderId;
@@ -181,48 +196,31 @@ function doPost(e) {
       if (clientOrderId) {
         Logger.log('ignore client order_id=' + clientOrderId + ' -> ' + orderId);
       }
-      sheet.appendRow([
-        dateRu,
-        orderId,
-        telegramUserId,
-        name,
-        phone,
-        username,
-        paymentLabel,
-        comment,
-        itemsText,
-        total != null && total !== '' ? Number(total) : '',
-        'Новый',
-      ]);
-      lastRowLocked = sheet.getLastRow();
       mapLocked = headerIndexMap_(sheet);
-      // Пишем order_id по заголовку (не по фиксированной колонке B) —
-      // и перезаписываем, если клиентский pending_ как-то попал в строку.
+      var rowArr = buildRowByHeaders_(sheet, mapLocked, {
+        'Дата': dateRu,
+        'order_id': orderId,
+        'telegram_user_id': telegramUserId,
+        'Имя': name,
+        'Телефон': phone,
+        'Username': username,
+        'Оплата': paymentLabel,
+        'Комментарий': comment,
+        'Состав': itemsText,
+        'Сумма': total != null && total !== '' ? Number(total) : '',
+        'Статус': 'Новый',
+        'Промокод': promoDisplay || '',
+        'Скидка': discountVal,
+        'Сумма до скидки': subtotalVal,
+      });
+      // appendRow принимает любую длину; длина = ширина листа после ensureHeaders_
+      sheet.appendRow(rowArr);
+      lastRowLocked = sheet.getLastRow();
+      // Текстовый формат для id (Sheets иначе портит длинные числа)
       writeTextCol_(sheet, lastRowLocked, mapLocked, 'order_id', orderId);
       writeTextCol_(sheet, lastRowLocked, mapLocked, 'telegram_user_id', telegramUserId);
     } finally {
       lock.releaseLock();
-    }
-
-    var lastRow = lastRowLocked || sheet.getLastRow();
-    var map = mapLocked || headerIndexMap_(sheet);
-    var promoDisplay = promoCode;
-    if (promoLabel) {
-      promoDisplay = promoCode ? promoCode + ' (' + promoLabel + ')' : promoLabel;
-    }
-    if (deliveryDiscountPending) {
-      promoDisplay = (promoDisplay ? promoDisplay + '; ' : '') + deliveryDiscountPending;
-    }
-    if (map['Промокод'] != null) {
-      sheet.getRange(lastRow, map['Промокод'] + 1).setValue(promoDisplay || '');
-    }
-    if (map['Скидка'] != null) {
-      var discountVal =
-        discount != null && discount !== '' ? Number(discount) : '';
-      sheet.getRange(lastRow, map['Скидка'] + 1).setValue(discountVal);
-    }
-    if (map['Сумма до скидки'] != null && subtotal !== '' && subtotal != null) {
-      sheet.getRange(lastRow, map['Сумма до скидки'] + 1).setValue(Number(subtotal));
     }
 
     var tgOk = sendTelegram_(
@@ -343,7 +341,12 @@ function ensureHeaders_(sheet) {
   ensurePromoColumns_(sheet);
 }
 
-/** Добавляет колонки Промокод / Скидка / Сумма до скидки в конец, не ломая старые данные. */
+/**
+ * Добавляет колонки Промокод / Скидка / Сумма до скидки в конец, не ломая старые данные.
+ * ВАЖНО: Sheet.getRange(row, column, numRows, numColumns) — 3-й/4-й аргументы это
+ * КОЛИЧЕСТВО строк/колонок, а не endRow/endCol. Старый вызов
+ * getRange(1, 12, 1, 14) давал range на 14 колонок → ошибка «array: 3; range: 14».
+ */
 function ensurePromoColumns_(sheet) {
   var extra = ['Промокод', 'Скидка', 'Сумма до скидки'];
   var map = headerIndexMap_(sheet);
@@ -352,9 +355,50 @@ function ensurePromoColumns_(sheet) {
     if (map[extra[i]] == null) missing.push(extra[i]);
   }
   if (!missing.length) return;
-  var startCol = Math.max(sheet.getLastColumn(), HEADERS.length) + 1;
-  // Если последняя ячейка заголовка пустая — можно писать туда, но проще всегда в конец
-  sheet.getRange(1, startCol, 1, startCol + missing.length - 1).setValues([missing]);
+
+  // Правее последнего непустого заголовка (или после HEADERS.length)
+  var probeCols = Math.max(sheet.getLastColumn(), HEADERS.length, 1);
+  var headerRow = sheet.getRange(1, 1, 1, probeCols).getValues()[0];
+  var rightmost = 0;
+  for (var j = 0; j < headerRow.length; j++) {
+    if (headerRow[j] !== '' && headerRow[j] != null) rightmost = j + 1;
+  }
+  var startCol = rightmost + 1;
+  if (startCol < 1) startCol = 1;
+
+  // getRange(row, column, numRows, numColumns) — пишем ровно missing.length колонок
+  sheet.getRange(1, startCol, 1, missing.length).setValues([missing]);
+}
+
+/**
+ * Строка для appendRow / setValues: длина = max(lastColumn, HEADERS, max header index+1).
+ * Значения раскладываются по имени заголовка; неизвестные колонки — пустые.
+ */
+function buildRowByHeaders_(sheet, map, valuesByHeader) {
+  var width = Math.max(sheet.getLastColumn(), HEADERS.length, 1);
+  for (var key in map) {
+    if (Object.prototype.hasOwnProperty.call(map, key) && map[key] + 1 > width) {
+      width = map[key] + 1;
+    }
+  }
+  var row = [];
+  for (var i = 0; i < width; i++) row.push('');
+  for (var header in valuesByHeader) {
+    if (!Object.prototype.hasOwnProperty.call(valuesByHeader, header)) continue;
+    var idx = map[header];
+    if (idx == null) continue;
+    row[idx] = valuesByHeader[header];
+  }
+  return row;
+}
+
+/** Диапазон по абсолютным координатам (start..end включительно). */
+function a1Range_(sheet, startRow, startCol, endRow, endCol) {
+  var numRows = endRow - startRow + 1;
+  var numCols = endCol - startCol + 1;
+  if (numRows < 1) numRows = 1;
+  if (numCols < 1) numCols = 1;
+  return sheet.getRange(startRow, startCol, numRows, numCols);
 }
 
 
@@ -395,7 +439,7 @@ function nextOrderId_(sheet) {
   var lastRow = sheet.getLastRow();
   if (lastRow < 2) return String(start);
 
-  var values = sheet.getRange(2, col + 1, lastRow, col + 1).getDisplayValues();
+  var values = a1Range_(sheet, 2, col + 1, lastRow, col + 1).getDisplayValues();
   var maxNum = start - 1;
   for (var i = 0; i < values.length; i++) {
     var raw = String(values[i][0] || '').trim();
@@ -414,7 +458,7 @@ function nextOrderId_(sheet) {
  */
 function headerIndexMap_(sheet) {
   var lastCol = Math.max(sheet.getLastColumn(), HEADERS.length);
-  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var headers = a1Range_(sheet, 1, 1, 1, lastCol).getValues()[0];
   var map = {};
   for (var i = 0; i < headers.length; i++) {
     var key = String(headers[i] || '').trim();
@@ -436,8 +480,8 @@ function listOrdersByUser_(userId) {
 
   var lastCol = Math.max(sheet.getLastColumn(), HEADERS.length);
   // getDisplayValues — id как на экране, без scientific notation от Number
-  var data = sheet.getRange(2, 1, lastRow, lastCol).getValues();
-  var display = sheet.getRange(2, 1, lastRow, lastCol).getDisplayValues();
+  var data = a1Range_(sheet, 2, 1, lastRow, lastCol).getValues();
+  var display = a1Range_(sheet, 2, 1, lastRow, lastCol).getDisplayValues();
   var want = telegramIdString_(userId);
   var out = [];
 
@@ -778,7 +822,7 @@ function notifyCustomerStatusChange_(e) {
 }
 
 function pushStatusForRow_(sheet, map, row, lastCol, newStatus, oldStatus) {
-  var range = sheet.getRange(row, 1, row, lastCol);
+  var range = a1Range_(sheet, row, 1, row, lastCol);
   var rowValues = range.getValues()[0];
   var rowDisplay = range.getDisplayValues()[0];
 
@@ -984,8 +1028,8 @@ function firstTelegramUserIdFromSheet_() {
     var uidCol = map['telegram_user_id'];
     if (uidCol == null) return '';
     var lastCol = Math.max(sheet.getLastColumn(), HEADERS.length);
-    var values = sheet.getRange(2, 1, lastRow, lastCol).getValues();
-    var display = sheet.getRange(2, 1, lastRow, lastCol).getDisplayValues();
+    var values = a1Range_(sheet, 2, 1, lastRow, lastCol).getValues();
+    var display = a1Range_(sheet, 2, 1, lastRow, lastCol).getDisplayValues();
     for (var r = 0; r < values.length; r++) {
       var id = '';
       if (typeof values[r][uidCol] === 'number' && isFinite(values[r][uidCol])) {
