@@ -1073,7 +1073,7 @@ html[data-theme='dark'] .order-status {
   font-size: 0.95rem;
 }
 
-/* Колесо удачи (макет без промокодов и сохранения приза) */
+/* Колесо удачи */
 .luck-panel {
   padding: 18px 14px 20px;
   border-radius: var(--card-radius);
@@ -1142,65 +1142,24 @@ html[data-theme='dark'] .wheel-pointer {
   height: 100%;
   border: 8px solid var(--tg-secondary-bg);
   border-radius: 50%;
-  background: conic-gradient(
-    from -45deg,
-    #ff8a1f 0deg 90deg,
-    #ffca5c 90deg 180deg,
-    #55c98a 180deg 270deg,
-    #ef6b62 270deg 360deg
-  );
   box-shadow: 0 8px 22px color-mix(in srgb, var(--brand-orange) 24%, transparent),
     0 0 0 2px color-mix(in srgb, var(--brand-orange) 42%, transparent);
-  transition: transform 0.15s ease;
-}
-
-.luck-wheel.is-spinning {
-  animation: luckSpin 0.95s cubic-bezier(0.15, 0.7, 0.2, 1);
-}
-
-@keyframes luckSpin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(900deg);
-  }
+  transition: transform 3.4s cubic-bezier(0.12, 0.72, 0.18, 1);
+  will-change: transform;
 }
 
 .wheel-label {
   position: absolute;
   z-index: 1;
-  width: 45%;
+  width: 29%;
   color: #2b1a0d;
-  font-size: clamp(0.8rem, 3.8vw, 1rem);
+  font-size: clamp(0.68rem, 3.2vw, 0.9rem);
   font-weight: 800;
   line-height: 1.1;
   text-align: center;
   text-shadow: 0 1px rgba(255, 255, 255, 0.35);
-}
-
-.wheel-label-top {
-  top: 22px;
-  left: 50%;
-  transform: translateX(-50%);
-}
-
-.wheel-label-right {
-  top: 50%;
-  right: 8px;
-  transform: translateY(-50%);
-}
-
-.wheel-label-bottom {
-  bottom: 22px;
-  left: 50%;
-  transform: translateX(-50%);
-}
-
-.wheel-label-left {
-  top: 50%;
-  left: 8px;
-  transform: translateY(-50%);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
 }
 
 .wheel-hub {

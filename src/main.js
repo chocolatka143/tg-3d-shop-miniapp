@@ -1,5 +1,5 @@
 import './style.css';
-import { PRODUCTS, MATERIALS, COLORS, SIZES, SHOP, PAYMENT_METHODS, HOME_TABS, FAQ_ITEMS, PORTFOLIO_ITEMS, REVIEW_STUBS } from './data.js';
+import { PRODUCTS, MATERIALS, COLORS, SIZES, SHOP, PAYMENT_METHODS, HOME_TABS, FAQ_ITEMS, PORTFOLIO_ITEMS, REVIEW_STUBS, LUCK_SEGMENTS } from './data.js';
 import {
   initTelegram,
   getTelegram,
@@ -15,6 +15,7 @@ import {
 const STORAGE_KEY = 'tg3d_cart_v1';
 const THEME_KEY = 'buber-theme';
 const ORDERS_KEY = 'tg3d_orders_v1';
+const LUCK_SPIN_DURATION_MS = 3400;
 
 /** @typedef {{ type: 'product'|'custom', id: string, name: string, price: number, qty: number, emoji?: string, color?: string, material?: string, size?: string, stlName?: string, comment?: string, productColor?: string }} CartItem */
 
@@ -28,7 +29,9 @@ const state = {
   lastOrder: null,
   luck: {
     spinning: false,
-    result: '',
+    hasSpun: false,
+    result: null,
+    rotation: 0,
   },
   checkout: {
     name: '',
@@ -324,26 +327,98 @@ function statusLabel(status) {
   return status || 'Новый';
 }
 
+function pickLuckSegment() {
+  const totalWeight = LUCK_SEGMENTS.reduce((sum, segment) => sum + Math.max(0, segment.weight || 0), 0);
+  let cursor = Math.random() * totalWeight;
+  return LUCK_SEGMENTS.find((segment) => {
+    cursor -= Math.max(0, segment.weight || 0);
+    return cursor < 0;
+  }) || LUCK_SEGMENTS[LUCK_SEGMENTS.length - 1];
+}
+
+function mod(value, divisor) {
+  return ((value % divisor) + divisor) % divisor;
+}
+
 function spinLuckWheel() {
-  if (state.luck.spinning) return;
+  if (state.luck.spinning || state.luck.hasSpun || !LUCK_SEGMENTS.length) return;
+
+  const selected = pickLuckSegment();
+  const selectedIndex = LUCK_SEGMENTS.findIndex((segment) => segment.id === selected.id);
+  const slice = 360 / LUCK_SEGMENTS.length;
+  const selectedCenter = selectedIndex * slice;
+  const extraOffset = mod(-selectedCenter - state.luck.rotation, 360);
+  const turns = 5 + Math.floor(Math.random() * 2);
 
   state.luck.spinning = true;
-  state.luck.result = '';
+  state.luck.hasSpun = true;
+  state.luck.result = null;
+  state.luck.rotation += turns * 360 + extraOffset;
   haptic('medium');
   render();
 
   window.setTimeout(() => {
-    const demoResults = [
-      'Демо-приз: скидка 10%',
-      'Демо-приз: доставка в подарок',
-      'Демо-приз: −500 ₽',
-      'Скоро — попробуйте ещё раз',
-    ];
     state.luck.spinning = false;
-    state.luck.result = demoResults[Math.floor(Math.random() * demoResults.length)];
+    state.luck.result = selected;
     haptic('medium');
     if (state.screen === 'home' && state.homeTab === 'luck') render();
-  }, 950);
+  }, LUCK_SPIN_DURATION_MS);
+}
+
+function luckWheelStyle() {
+  const slice = 360 / LUCK_SEGMENTS.length;
+  const stops = LUCK_SEGMENTS
+    .map((segment, index) => {
+      const start = index * slice;
+      const end = (index + 1) * slice;
+      return `${segment.color} ${start}deg ${end}deg`;
+    })
+    .join(', ');
+  return `background: conic-gradient(from ${-slice / 2}deg, ${stops}); transform: rotate(${state.luck.rotation}deg);`;
+}
+
+function renderLuckWheel() {
+  const slice = 360 / LUCK_SEGMENTS.length;
+  const labels = LUCK_SEGMENTS.map((segment, index) => {
+    const angle = (index * slice) * (Math.PI / 180);
+    const radius = 35;
+    const left = 50 + Math.sin(angle) * radius;
+    const top = 50 - Math.cos(angle) * radius;
+    return `<span class="wheel-label" style="left:${left.toFixed(2)}%;top:${top.toFixed(2)}%">${escapeHtml(segment.label)}</span>`;
+  }).join('');
+  const result = state.luck.result
+    ? `<div class="luck-result" role="status">
+        <span class="luck-result-icon">${state.luck.result.label === 'Пусто' ? '🙂' : '🎉'}</span>
+        <strong>${escapeHtml(state.luck.result.result)}</strong>
+        <small>${state.luck.result.label === 'Пусто' ? 'Попробуйте снова завтра.' : 'Покажите этот экран при оформлении заказа.'}</small>
+      </div>`
+    : '';
+  const buttonLabel = state.luck.spinning
+    ? 'Колесо крутится…'
+    : state.luck.hasSpun
+      ? 'Попытка использована'
+      : 'Крутить колесо';
+
+  return `
+    <section class="luck-panel" aria-labelledby="luck-title">
+      <div class="luck-heading">
+        <span class="luck-kicker">Случайный приз</span>
+        <h3 class="section-title" id="luck-title">Колесо удачи</h3>
+        <p class="tab-lead">Крутите колесо и ловите подарки от Бубер 3D.</p>
+      </div>
+      <div class="wheel-wrap">
+        <span class="wheel-pointer" aria-hidden="true">▼</span>
+        <div class="luck-wheel ${state.luck.spinning ? 'is-spinning' : ''}" style="${luckWheelStyle()}" aria-label="Колесо с призами">
+          ${labels}
+          <span class="wheel-hub" aria-hidden="true">🎁</span>
+        </div>
+      </div>
+      <button class="btn btn-primary luck-spin" data-action="spin-luck" ${state.luck.spinning || state.luck.hasSpun ? 'disabled' : ''}>
+        ${buttonLabel}
+      </button>
+      ${result}
+      <p class="luck-note">Одна попытка за сеанс. Приз пока не сохраняется и промокод автоматически не создаётся.</p>
+    </section>`;
 }
 
 async function copyText(text) {
@@ -661,40 +736,6 @@ function renderTabContent() {
     return renderLuckWheel();
   }
   return renderProductCards(PRODUCTS);
-}
-
-function renderLuckWheel() {
-  const result = state.luck.result
-    ? `<div class="luck-result" role="status">
-        <span class="luck-result-icon">✨</span>
-        <strong>${escapeHtml(state.luck.result)}</strong>
-        <small>Демо-режим: промокод не создан и в заказ не добавлен.</small>
-      </div>`
-    : '';
-
-  return `
-    <section class="luck-panel" aria-labelledby="luck-title">
-      <div class="luck-heading">
-        <span class="luck-kicker">Демо-механика</span>
-        <h3 class="section-title" id="luck-title">Колесо удачи</h3>
-        <p class="tab-lead">Крутите колесо и ловите будущие подарки от Бубер 3D.</p>
-      </div>
-      <div class="wheel-wrap">
-        <span class="wheel-pointer" aria-hidden="true">▼</span>
-        <div class="luck-wheel ${state.luck.spinning ? 'is-spinning' : ''}" aria-label="Колесо с призами">
-          <span class="wheel-label wheel-label-top">10%</span>
-          <span class="wheel-label wheel-label-right">−500 ₽</span>
-          <span class="wheel-label wheel-label-bottom">Доставка</span>
-          <span class="wheel-label wheel-label-left">Пусто</span>
-          <span class="wheel-hub" aria-hidden="true">🎁</span>
-        </div>
-      </div>
-      <button class="btn btn-primary luck-spin" data-action="spin-luck" ${state.luck.spinning ? 'disabled' : ''}>
-        ${state.luck.spinning ? 'Колесо крутится…' : 'Крутить колесо'}
-      </button>
-      ${result}
-      <p class="luck-note">Все призы на экране — макет. Реальная логика промокодов появится позже.</p>
-    </section>`;
 }
 
 function renderHome() {

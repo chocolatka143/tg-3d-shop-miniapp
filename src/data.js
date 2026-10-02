@@ -69,6 +69,14 @@ export const PRODUCTS = [
 ];
 
 /** Вкладки главной: каталог + контент */
+/** Сегменты колеса: weight — относительный шанс выпадения (сумма 100 = проценты). */
+export const LUCK_SEGMENTS = [
+  { id: 'empty', label: 'Пусто', result: 'В этот раз без подарка', weight: 50, color: '#ef6b62' },
+  { id: 'discount-10', label: '−10%', result: 'Скидка 10% на заказ', weight: 25, color: '#ff8a1f' },
+  { id: 'delivery', label: 'Доставка', result: 'Доставка в подарок', weight: 15, color: '#55c98a' },
+  { id: 'discount-500', label: '−500 ₽', result: 'Скидка 500 ₽ на заказ', weight: 10, color: '#ffca5c' },
+];
+
 export const HOME_TABS = [
   { id: 'all', label: 'Все' },
   { id: 'filament', label: 'Филамент' },
