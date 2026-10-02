@@ -43,6 +43,68 @@ body {
 }
 
 /* Header */
+
+.brand {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.brand-mark {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: linear-gradient(145deg, #2aabee 0%, #6c5ce7 100%);
+  color: #fff;
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px color-mix(in srgb, #2aabee 35%, transparent);
+}
+
+.brand-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.header h1 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hero-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--tg-text) 85%, transparent);
+}
+
+.hero-brand .brand-mark {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+}
+
+.hero-brand .brand-mark svg {
+  width: 16px;
+  height: 16px;
+}
+
+
 .header {
   position: sticky;
   top: 0;
@@ -56,11 +118,7 @@ body {
   border-bottom: 1px solid color-mix(in srgb, var(--tg-hint) 25%, transparent);
 }
 
-.header h1 {
-  font-size: 1.15rem;
-  font-weight: 700;
-  flex: 1;
-}
+/* .header h1 moved below brand styles */
 
 .btn-icon {
   width: 40px;

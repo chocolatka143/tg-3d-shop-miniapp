@@ -186,7 +186,21 @@ function updateMainButton() {
 
 /* ——— Renderers ——— */
 
-function header(title, { back, cart } = {}) {
+function brandMark() {
+  return `<span class="brand-mark" aria-hidden="true">
+    <svg viewBox="0 0 32 32" width="22" height="22" fill="none">
+      <rect x="4" y="14" width="24" height="12" rx="2" fill="currentColor" opacity="0.9"/>
+      <rect x="8" y="6" width="16" height="10" rx="1.5" stroke="currentColor" stroke-width="2" fill="none"/>
+      <rect x="12" y="18" width="8" height="4" rx="1" fill="var(--tg-bg)"/>
+      <circle cx="22" cy="20" r="1.5" fill="var(--tg-bg)"/>
+    </svg>
+  </span>`;
+}
+
+function header(title, { back, cart, brand } = {}) {
+  const titleHtml = brand
+    ? `<div class="brand">${brandMark()}<h1 class="brand-title">${title}</h1></div>`
+    : `<h1>${title}</h1>`;
   return `
     <header class="header">
       ${
@@ -194,7 +208,7 @@ function header(title, { back, cart } = {}) {
           ? `<button class="btn-icon" data-action="back" aria-label="Назад">←</button>`
           : `<span class="btn-icon" style="visibility:hidden">·</span>`
       }
-      <h1>${title}</h1>
+      ${titleHtml}
       ${
         cart !== false
           ? `<button class="btn-icon" data-action="cart" aria-label="Корзина">
@@ -223,9 +237,10 @@ function renderHome() {
   ).join('');
 
   return `
-    ${header('3D Печать')}
+    ${header('Бубер 3D', { brand: true })}
     <div class="screen">
       <div class="hero">
+        <div class="hero-brand">${brandMark()}<span>Бубер 3D</span></div>
         <h2>Печать на заказ</h2>
         <p>Выберите готовый товар или опишите свой вариант — материал, цвет, размер и STL.</p>
         <button class="btn-custom" data-action="custom">✨ Свой вариант</button>
