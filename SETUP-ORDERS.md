@@ -12,4 +12,4 @@
 
 Личный кабинет (статусы, колонки `order_id` / `telegram_user_id`, GET списка): **[LK-ORDERS.md](LK-ORDERS.md)**.
 
-Пуш клиенту при смене статуса: см. **[orders-apps-script/README.md](orders-apps-script/README.md)** §8 и `installTrigger_()` в `Code.gs`.
+Пуш клиенту при смене статуса: см. **[orders-apps-script/README.md](orders-apps-script/README.md)** §8 и `installTrigger()` в `Code.gs`.

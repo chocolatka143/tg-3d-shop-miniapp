@@ -6,7 +6,8 @@
  *
  * Пуш клиенту при смене статуса:
  *   installable onEdit → onOrdersStatusEdit(e) на лист «Заказы», колонка «Статус».
- *   Один раз: запустить installTrigger_() из редактора (или создать триггер вручную).
+ *   Один раз: запустить installTrigger() из редактора (удалит старые и создаст On edit).
+ *   Тип триггера ОБЯЗАТЕЛЬНО: Из таблицы / При изменении (НЕ по времени, НЕ календарь).
  *   Клиент должен написать боту /start (иначе sendMessage по chat_id не дойдёт).
  *
  * Script Properties (Проект → Настройки проекта → Свойства скрипта):
@@ -475,23 +476,41 @@ function sendTelegramTo_(chatId, text) {
 /* ——— пуш клиенту при смене статуса ——— */
 
 /**
- * Один раз: выберите эту функцию в редакторе Apps Script → Выполнить.
- * Создаёт installable onEdit (простой onEdit не может вызывать UrlFetchApp).
- * Либо вручную: Триггеры → Добавить → onOrdersStatusEdit / При изменении / Таблица.
+ * Один раз: выберите installTrigger → Выполнить.
+ * Удаляет ВСЕ старые триггеры onOrdersStatusEdit и создаёт правильный:
+ *   From spreadsheet / On edit (Из таблицы / При изменении).
+ * НЕ по времени, НЕ из календаря — иначе e.range будет пустым.
+ *
+ * Вручную: Триггеры → Добавить → функция onOrdersStatusEdit →
+ *   источник «Из таблицы» → событие «При изменении» → Сохранить.
+ * Старые сломанные триггеры на эту функцию — удалите перед созданием.
  */
-function installTrigger_() {
+function installTrigger() {
   var handlers = ScriptApp.getProjectTriggers();
+  var removed = 0;
   for (var i = 0; i < handlers.length; i++) {
     if (handlers[i].getHandlerFunction() === 'onOrdersStatusEdit') {
-      Logger.log('onOrdersStatusEdit trigger already exists');
-      return;
+      ScriptApp.deleteTrigger(handlers[i]);
+      removed++;
     }
+  }
+  if (removed) {
+    Logger.log('Deleted ' + removed + ' old onOrdersStatusEdit trigger(s)');
   }
   ScriptApp.newTrigger('onOrdersStatusEdit')
     .forSpreadsheet(SpreadsheetApp.getActive())
     .onEdit()
     .create();
-  Logger.log('Created installable onEdit → onOrdersStatusEdit');
+  Logger.log(
+    'Created installable onEdit → onOrdersStatusEdit ' +
+      '(From spreadsheet / On edit). Change «Статус» cell in sheet to test — ' +
+      'do NOT run onOrdersStatusEdit from the editor dropdown.'
+  );
+}
+
+/** Alias (скрыт в dropdown из‑за _). */
+function installTrigger_() {
+  installTrigger();
 }
 
 /**
@@ -509,12 +528,38 @@ function onOrdersStatusEdit(e) {
 }
 
 function notifyCustomerStatusChange_(e) {
-  if (!e || !e.range) {
-    Logger.log('status push skip: no edit event/range');
-    return;
+  var range = e && e.range ? e.range : null;
+  var eventValue = e && e.value != null ? e.value : null;
+  var eventOldValue = e && e.oldValue != null ? e.oldValue : null;
+  var usedActiveFallback = false;
+
+  // Сломанный/неверный триггер (time-driven и т.п.) приходит без e.range.
+  // Fallback: активная ячейка — только если это колонка «Статус» на «Заказы».
+  if (!range) {
+    try {
+      range = SpreadsheetApp.getActiveRange();
+    } catch (errActive) {
+      range = null;
+    }
+    if (!range) {
+      Logger.log(
+        'status push skip: no edit event/range and no active range ' +
+          '(fix trigger: delete old → run installTrigger → must be ' +
+          'From spreadsheet / On edit, NOT time-driven)'
+      );
+      return;
+    }
+    usedActiveFallback = true;
+    Logger.log(
+      'status push: no e.range — fallback to activeRange ' +
+        range.getA1Notation() +
+        ' sheet="' +
+        range.getSheet().getName() +
+        '" (if this fires often, recreate trigger via installTrigger)'
+    );
   }
 
-  var sheet = e.range.getSheet();
+  var sheet = range.getSheet();
   if (!sheet || sheet.getName() !== SHEET_NAME) {
     Logger.log(
       'status push skip: wrong sheet "' +
@@ -527,10 +572,10 @@ function notifyCustomerStatusChange_(e) {
   }
 
   // Только правка в одной колонке «Статус» (одна или несколько строк)
-  if (e.range.getNumColumns() !== 1) {
+  if (range.getNumColumns() !== 1) {
     Logger.log(
       'status push skip: multi-column edit (cols=' +
-        e.range.getNumColumns() +
+        range.getNumColumns() +
         ')'
     );
     return;
@@ -543,20 +588,21 @@ function notifyCustomerStatusChange_(e) {
     return;
   }
 
-  var col = e.range.getColumn(); // 1-based
+  var col = range.getColumn(); // 1-based
   if (col !== statusCol + 1) {
     Logger.log(
       'status push skip: wrong col ' +
         col +
         ' (Статус is ' +
         (statusCol + 1) +
-        ')'
+        ')' +
+        (usedActiveFallback ? ' [activeRange fallback]' : '')
     );
     return;
   }
 
-  var startRow = e.range.getRow();
-  var numRows = e.range.getNumRows();
+  var startRow = range.getRow();
+  var numRows = range.getNumRows();
   var lastCol = Math.max(sheet.getLastColumn(), HEADERS.length);
   Logger.log(
     'status push: sheet=' +
@@ -564,7 +610,8 @@ function notifyCustomerStatusChange_(e) {
       ' rows=' +
       startRow +
       '..' +
-      (startRow + numRows - 1)
+      (startRow + numRows - 1) +
+      (usedActiveFallback ? ' via=activeRange' : ' via=e.range')
   );
 
   for (var i = 0; i < numRows; i++) {
@@ -576,12 +623,13 @@ function notifyCustomerStatusChange_(e) {
 
     var newStatus = '';
     var oldStatus = '';
-    if (numRows === 1 && e.value != null) {
-      newStatus = str_(e.value);
-      oldStatus = str_(e.oldValue != null ? e.oldValue : '');
+    // e.value только у настоящего onEdit на одну ячейку; fallback — из ячейки
+    if (numRows === 1 && eventValue != null && !usedActiveFallback) {
+      newStatus = str_(eventValue);
+      oldStatus = str_(eventOldValue != null ? eventOldValue : '');
     } else {
       newStatus = str_(sheet.getRange(row, col).getDisplayValue());
-      // oldValue для мульти-правки недоступен
+      // oldValue для мульти-правки / fallback недоступен
       oldStatus = '';
     }
     if (!newStatus) {

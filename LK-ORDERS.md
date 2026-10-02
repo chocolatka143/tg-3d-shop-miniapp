@@ -185,7 +185,7 @@ GET …/exec?key=WEBHOOK_SECRET&userId=123456789
 Реализовано в `orders-apps-script/Code.gs`:
 
 1. Вставьте обновлённый `Code.gs` в Apps Script и сохраните.
-2. Один раз выполните **`installTrigger_()`** (или создайте триггер вручную на `onOrdersStatusEdit` / On edit). См. [orders-apps-script/README.md](orders-apps-script/README.md) §8.
+2. Один раз выполните **`installTrigger()`** (или создайте триггер вручную на `onOrdersStatusEdit` / On edit). См. [orders-apps-script/README.md](orders-apps-script/README.md) §8.
 3. Клиент должен сделать боту **`/start`**; в строке заказа нужен **`telegram_user_id`** (из Mini App).
 4. Меняете «Статус» в таблице → клиенту уходит сообщение с `order_id` и новым статусом.
 
@@ -201,5 +201,5 @@ GET …/exec?key=WEBHOOK_SECRET&userId=123456789
 4. [x] Тест POST create → строка **Новый** + Telegram.
 5. [x] Тест POST `action: "list"` → заказы в JSON.
 6. [x] В Mini App: «Мои заказы» показывает статусы с таблицы.
-7. [ ] Пуш при смене статуса: вставить `Code.gs` + `installTrigger_()` + клиент `/start`.
+7. [ ] Пуш при смене статуса: вставить `Code.gs` + `installTrigger()` + клиент `/start`.
 8. [ ] Verify `initData` перед продом ЛК.
