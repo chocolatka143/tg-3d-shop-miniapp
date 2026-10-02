@@ -176,9 +176,20 @@ curl -sS 'https://script.google.com/macros/s/XXXX/exec?key=ВАШ_СЕКРЕТ&u
 Триггер живёт у проекта Apps Script и **не** заменяется при «новом развёртывании» веб-приложения.  
 Новую версию веб-приложения для пуша **не обязательно** делать — достаточно сохранить `Code.gs` и поставить триггер. Новую версию `/exec` делайте, если меняли `doGet`/`doPost`.
 
-### Проверка
+### Быстрый тест пуша (без смены статуса)
 
-1. У тестового заказа есть `telegram_user_id`, и этот пользователь сделал `/start` боту.
+1. Вставьте актуальный `Code.gs` и сохраните.
+2. (Опционально) в свойствах скрипта добавьте `TEST_CHAT_ID` = ваш числовой Telegram id.
+3. В редакторе выберите функцию **`testStatusPush_`** → **Выполнить**.
+4. Откройте **Выполнения** → журналы: должно быть `testStatusPush_: … ok=true`.  
+   В Telegram придёт сообщение «🧪 Бубер 3D — тест пуша».  
+   Если `ok=false` — смотрите `body` (нет `/start`, неверный токен, blocked).
+
+Без `TEST_CHAT_ID` скрипт берёт первый непустой `telegram_user_id` с листа, иначе `CHAT_ID`.
+
+### Проверка через смену статуса
+
+1. У тестового заказа есть `telegram_user_id` (целое число, **не** вид `1.23E+09`), и этот пользователь сделал `/start` боту.
 2. В колонке **Статус** смените значение (например `Новый` → `В работе`).
 3. Клиенту придёт сообщение вида:
 
@@ -192,7 +203,9 @@ curl -sS 'https://script.google.com/macros/s/XXXX/exec?key=ВАШ_СЕКРЕТ&u
 Актуальный статус также в Mini App → «Мои заказы».
 ```
 
-4. Если сообщения нет — **Выполнения** в Apps Script / `Logger`: `status push failed …` (часто «Forbidden: bot was blocked by the user» или клиент не писал `/start`).
+4. Если сообщения нет — **Выполнения** → клик по `onOrdersStatusEdit` → журналы:  
+   `status push ok` / `status push failed …` / `status push skip: …`  
+   (часто «Forbidden: bot was blocked by the user», клиент не писал `/start`, или id в scientific notation — перезапишите ячейку как текст).
 
 ## Если что-то не так
 
@@ -200,4 +213,4 @@ curl -sS 'https://script.google.com/macros/s/XXXX/exec?key=ВАШ_СЕКРЕТ&u
 - `missing_column_telegram_user_id` — на листе нет колонки; обновите заголовки.
 - Строка есть, Telegram молчит — проверьте `BOT_TOKEN`, `CHAT_ID` и что вы написали боту `/start`.
 - «Нужны права» при деплое — заново подтвердите доступ к таблице и `https://api.telegram.org`.
-- Статус в таблице меняете, клиенту пуша нет — нет installable триггера `onOrdersStatusEdit` (запустите `installTrigger_`), пустой `telegram_user_id`, клиент не делал `/start`, или смотрите лог `status push failed`.
+- Статус в таблице меняете, клиенту пуша нет — сначала запустите **`testStatusPush_`** (изолирует Telegram). Дальше: нет триггера `onOrdersStatusEdit` (`installTrigger_`), пустой/`1.23E+09` в `telegram_user_id`, клиент не делал `/start`, или лог `status push skip` / `failed`.

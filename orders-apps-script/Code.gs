@@ -13,6 +13,7 @@
  *   BOT_TOKEN        — токен бота от @BotFather
  *   CHAT_ID          — ваш chat id (куда слать уведомления о новых заказах)
  *   WEBHOOK_SECRET   — общий секрет (в JSON body.secret / ?key= / X-Webhook-Secret)
+ *   TEST_CHAT_ID     — опционально: chat id для testStatusPush_()
  *
  * Деплой: Развернуть → Новое развёртывание → Веб-приложение
  *   Выполнять от имени: Меня
@@ -170,6 +171,14 @@ function doPost(e) {
       total != null && total !== '' ? Number(total) : '',
       'Новый',
     ]);
+    // Sheets иначе превращает длинный id в Number / 1.23E+09
+    if (telegramUserId) {
+      var uidCol = HEADERS.indexOf('telegram_user_id') + 1;
+      sheet
+        .getRange(sheet.getLastRow(), uidCol)
+        .setNumberFormat('@')
+        .setValue(String(telegramUserId));
+    }
 
     var tgOk = sendTelegram_(
       buildTgMessage_({
@@ -309,14 +318,25 @@ function listOrdersByUser_(userId) {
   }
 
   var lastCol = Math.max(sheet.getLastColumn(), HEADERS.length);
+  // getDisplayValues — id как на экране, без scientific notation от Number
   var data = sheet.getRange(2, 1, lastRow, lastCol).getValues();
-  var want = String(userId).trim();
+  var display = sheet.getRange(2, 1, lastRow, lastCol).getDisplayValues();
+  var want = telegramIdString_(userId);
   var out = [];
 
   for (var r = data.length - 1; r >= 0; r--) {
     var row = data[r];
-    var cellUid = String(row[uidCol] != null ? row[uidCol] : '').trim();
-    if (cellUid !== want) continue;
+    var cellUid = '';
+    if (typeof row[uidCol] === 'number' && isFinite(row[uidCol])) {
+      cellUid = String(Math.round(row[uidCol]));
+    } else {
+      cellUid = telegramIdString_(
+        display[r][uidCol] !== '' && display[r][uidCol] != null
+          ? display[r][uidCol]
+          : row[uidCol]
+      );
+    }
+    if (!cellUid || cellUid !== want) continue;
 
     out.push({
       order_id: cell_(row, map, 'order_id'),
@@ -489,31 +509,70 @@ function onOrdersStatusEdit(e) {
 }
 
 function notifyCustomerStatusChange_(e) {
-  if (!e || !e.range) return;
+  if (!e || !e.range) {
+    Logger.log('status push skip: no edit event/range');
+    return;
+  }
 
   var sheet = e.range.getSheet();
-  if (!sheet || sheet.getName() !== SHEET_NAME) return;
+  if (!sheet || sheet.getName() !== SHEET_NAME) {
+    Logger.log(
+      'status push skip: wrong sheet "' +
+        (sheet ? sheet.getName() : '') +
+        '" (need "' +
+        SHEET_NAME +
+        '")'
+    );
+    return;
+  }
 
   // Только правка в одной колонке «Статус» (одна или несколько строк)
-  if (e.range.getNumColumns() !== 1) return;
+  if (e.range.getNumColumns() !== 1) {
+    Logger.log(
+      'status push skip: multi-column edit (cols=' +
+        e.range.getNumColumns() +
+        ')'
+    );
+    return;
+  }
 
   var map = headerIndexMap_(sheet);
   var statusCol = map['Статус'];
   if (statusCol == null) {
-    Logger.log('notifyCustomerStatusChange_: no Статус column');
+    Logger.log('status push skip: no Статус column in header map');
     return;
   }
 
   var col = e.range.getColumn(); // 1-based
-  if (col !== statusCol + 1) return;
+  if (col !== statusCol + 1) {
+    Logger.log(
+      'status push skip: wrong col ' +
+        col +
+        ' (Статус is ' +
+        (statusCol + 1) +
+        ')'
+    );
+    return;
+  }
 
   var startRow = e.range.getRow();
   var numRows = e.range.getNumRows();
   var lastCol = Math.max(sheet.getLastColumn(), HEADERS.length);
+  Logger.log(
+    'status push: sheet=' +
+      SHEET_NAME +
+      ' rows=' +
+      startRow +
+      '..' +
+      (startRow + numRows - 1)
+  );
 
   for (var i = 0; i < numRows; i++) {
     var row = startRow + i;
-    if (row < 2) continue; // заголовок
+    if (row < 2) {
+      Logger.log('status push skip: header row');
+      continue;
+    }
 
     var newStatus = '';
     var oldStatus = '';
@@ -525,19 +584,49 @@ function notifyCustomerStatusChange_(e) {
       // oldValue для мульти-правки недоступен
       oldStatus = '';
     }
-    if (!newStatus) continue;
-    if (oldStatus && oldStatus === newStatus) continue;
+    if (!newStatus) {
+      Logger.log('status push skip: empty status at row ' + row);
+      continue;
+    }
+    if (oldStatus && oldStatus === newStatus) {
+      Logger.log(
+        'status push skip: status unchanged "' + newStatus + '" row ' + row
+      );
+      continue;
+    }
 
     pushStatusForRow_(sheet, map, row, lastCol, newStatus, oldStatus);
   }
 }
 
 function pushStatusForRow_(sheet, map, row, lastCol, newStatus, oldStatus) {
-  var rowValues = sheet.getRange(row, 1, row, lastCol).getValues()[0];
+  var range = sheet.getRange(row, 1, row, lastCol);
+  var rowValues = range.getValues()[0];
+  var rowDisplay = range.getDisplayValues()[0];
 
-  var orderId = cell_(rowValues, map, 'order_id') || ('строка ' + row);
-  var telegramUserId = cell_(rowValues, map, 'telegram_user_id');
-  var username = cell_(rowValues, map, 'Username');
+  var orderId =
+    cellDisplay_(rowDisplay, rowValues, map, 'order_id') || ('строка ' + row);
+  var telegramUserId = telegramIdFromRow_(rowDisplay, rowValues, map);
+  var username = cellDisplay_(rowDisplay, rowValues, map, 'Username');
+
+  Logger.log(
+    'status push row=' +
+      row +
+      ' order=' +
+      orderId +
+      ' rawUid=' +
+      JSON.stringify(rowValues[map['telegram_user_id']]) +
+      ' displayUid=' +
+      JSON.stringify(
+        map['telegram_user_id'] != null
+          ? rowDisplay[map['telegram_user_id']]
+          : null
+      ) +
+      ' coercedUid=' +
+      telegramUserId +
+      ' status=' +
+      newStatus
+  );
 
   var text = buildStatusPushMessage_({
     orderId: orderId,
@@ -576,15 +665,16 @@ function pushStatusForRow_(sheet, map, row, lastCol, newStatus, oldStatus) {
  * и клиент уже писал боту; чаще всего нужен именно numeric id после /start).
  */
 function resolveCustomerChatId_(telegramUserId, username) {
-  var uid = str_(telegramUserId);
+  var uid = telegramIdString_(telegramUserId);
   if (uid && /^\d+$/.test(uid)) return uid;
 
   var u = str_(username).replace(/^@/, '');
   if (u) return '@' + u;
 
   // Иногда в telegram_user_id ошибочно кладут @name
-  if (uid) {
-    var cleaned = uid.replace(/^@/, '');
+  var raw = str_(telegramUserId);
+  if (raw) {
+    var cleaned = raw.replace(/^@/, '');
     if (cleaned) return /^\d+$/.test(cleaned) ? cleaned : '@' + cleaned;
   }
   return '';
@@ -602,6 +692,142 @@ function buildStatusPushMessage_(o) {
   lines.push('');
   lines.push('Актуальный статус также в Mini App → «Мои заказы».');
   return lines.join('\n');
+}
+
+/**
+ * Читает telegram_user_id из строки: display предпочтительнее values
+ * (Sheets часто хранит id как Number → 1.23E+09 в String()).
+ */
+function telegramIdFromRow_(rowDisplay, rowValues, map) {
+  var idx = map['telegram_user_id'];
+  if (idx == null) return '';
+  var raw = rowValues && rowValues[idx] != null ? rowValues[idx] : '';
+  var display = rowDisplay && rowDisplay[idx] != null ? rowDisplay[idx] : '';
+  // Number из getValues() точнее, чем усечённый display "1.23E+09"
+  if (typeof raw === 'number' && isFinite(raw)) {
+    return String(Math.round(raw));
+  }
+  var fromDisplay = telegramIdString_(display);
+  if (fromDisplay && /^\d+$/.test(fromDisplay)) return fromDisplay;
+  return telegramIdString_(raw);
+}
+
+function cellDisplay_(rowDisplay, rowValues, map, header) {
+  var idx = map[header];
+  if (idx == null) return '';
+  if (rowDisplay && rowDisplay[idx] != null && str_(rowDisplay[idx]) !== '') {
+    return str_(rowDisplay[idx]);
+  }
+  return cell_(rowValues, map, header);
+}
+
+/**
+ * Приводит telegram id к целочисленной строке без scientific notation.
+ * Number / "1.23E+9" / "1234567890.0" → "1234567890".
+ */
+function telegramIdString_(v) {
+  if (v == null || v === '') return '';
+  if (typeof v === 'number') {
+    if (!isFinite(v)) return '';
+    return String(Math.round(v));
+  }
+  var s = String(v).trim();
+  if (!s) return '';
+  // scientific notation as text (Sheets display / copy-paste)
+  if (/^[+-]?\d+(\.\d+)?[eE][+-]?\d+$/.test(s)) {
+    var n = Number(s);
+    if (isFinite(n)) return String(Math.round(n));
+  }
+  // plain digits, optional trailing .0
+  if (/^\d+(\.0+)?$/.test(s)) {
+    return s.replace(/\.0+$/, '');
+  }
+  // Number-like with spaces
+  var compact = s.replace(/\s+/g, '');
+  if (/^\d+$/.test(compact)) return compact;
+  return s;
+}
+
+/**
+ * Тест пуша из редактора: выберите testStatusPush_ → Выполнить.
+ * Цель: Script Property TEST_CHAT_ID, иначе первый непустой telegram_user_id на листе,
+ * иначе CHAT_ID. В журнале: ok/code/body ответа Telegram.
+ */
+function testStatusPush_() {
+  var props = props_();
+  var token = String(props.getProperty('BOT_TOKEN') || '').trim();
+  if (!token) {
+    Logger.log('testStatusPush_: BOT_TOKEN missing in Script Properties');
+    return;
+  }
+
+  var chatId = String(props.getProperty('TEST_CHAT_ID') || '').trim();
+  if (!chatId) {
+    chatId = firstTelegramUserIdFromSheet_();
+  }
+  if (!chatId) {
+    chatId = String(props.getProperty('CHAT_ID') || '').trim();
+  }
+  chatId = telegramIdString_(chatId) || str_(chatId);
+  if (!chatId) {
+    Logger.log(
+      'testStatusPush_: no chat id — set TEST_CHAT_ID or fill telegram_user_id / CHAT_ID'
+    );
+    return;
+  }
+
+  var msg =
+    '🧪 Бубер 3D — тест пуша\n' +
+    'Если видите это сообщение, sendMessage работает.\n' +
+    'chat_id=' +
+    chatId +
+    '\n' +
+    Utilities.formatDate(new Date(), 'Europe/Moscow', 'dd.MM.yyyy HH:mm:ss');
+
+  var result = sendTelegramTo_(chatId, msg);
+  Logger.log(
+    'testStatusPush_: chat=' +
+      chatId +
+      ' ok=' +
+      result.ok +
+      ' code=' +
+      result.code +
+      ' body=' +
+      result.body
+  );
+}
+
+function firstTelegramUserIdFromSheet_() {
+  try {
+    var sheet = getOrdersSheet_();
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) return '';
+    var map = headerIndexMap_(sheet);
+    var uidCol = map['telegram_user_id'];
+    if (uidCol == null) return '';
+    var lastCol = Math.max(sheet.getLastColumn(), HEADERS.length);
+    var values = sheet.getRange(2, 1, lastRow, lastCol).getValues();
+    var display = sheet.getRange(2, 1, lastRow, lastCol).getDisplayValues();
+    for (var r = 0; r < values.length; r++) {
+      var id = '';
+      if (typeof values[r][uidCol] === 'number' && isFinite(values[r][uidCol])) {
+        id = String(Math.round(values[r][uidCol]));
+      } else {
+        id = telegramIdString_(
+          display[r][uidCol] !== '' && display[r][uidCol] != null
+            ? display[r][uidCol]
+            : values[r][uidCol]
+        );
+      }
+      if (id) return id;
+    }
+  } catch (err) {
+    Logger.log(
+      'firstTelegramUserIdFromSheet_ error: ' +
+        String(err && err.message ? err.message : err)
+    );
+  }
+  return '';
 }
 
 function str_(v) {
