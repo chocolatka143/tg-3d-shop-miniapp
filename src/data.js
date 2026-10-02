@@ -156,7 +156,7 @@ export const SHOP = {
   /** URL веб-приложения Apps Script (.../exec). Пусто = без таблицы, только копирование + Telegram */
   orderWebhookUrl: 'https://script.google.com/macros/s/AKfycbzVEKwta7ZkLtA-IG8jx7nbTy9KET-61bDQwKt2FhHhm4PmXfsH7fJAlbqsk3-6gxFx/exec',
   /** Тот же WEBHOOK_SECRET, что в свойствах скрипта. Не коммитьте реальный секрет */
-  orderWebhookSecret: 'test123',
+  orderWebhookSecret: 'FREKF21',
 };
 
 export const PAYMENT_METHODS = [
