@@ -8,12 +8,33 @@ export function initTelegram() {
   try {
     tg.ready();
     tg.expand();
-    applyTheme(tg.themeParams);
+    // Бренд Бубер 3D: фиксируем свою палитру, не подмешиваем тему Telegram
     if (tg.setHeaderColor) {
       try {
-        tg.setHeaderColor('secondary_bg_color');
+        tg.setHeaderColor('#0a0a0a');
       } catch (_) {
-        /* ignore older clients */
+        try {
+          tg.setHeaderColor('bg_color');
+        } catch (__) {
+          /* ignore older clients */
+        }
+      }
+    }
+    if (tg.setBackgroundColor) {
+      try {
+        tg.setBackgroundColor('#0a0a0a');
+      } catch (_) {
+        /* ignore */
+      }
+    }
+    if (tg.MainButton?.setParams) {
+      try {
+        tg.MainButton.setParams({
+          color: '#ff8a1f',
+          text_color: '#0a0a0a',
+        });
+      } catch (_) {
+        /* ignore */
       }
     }
   } catch (e) {
