@@ -336,11 +336,19 @@ function statusLabel(status) {
 
 const STATUS_SLUGS = {
   Новый: 'new',
-  Подтверждён: 'confirmed',
-  'В печати': 'printing',
+  'В работе': 'working',
+  Подтверждён: 'working',
+  'В печати': 'working',
   Готов: 'ready',
+  'Готов к выдаче': 'ready',
   Выдан: 'done',
   Отменён: 'cancelled',
+};
+
+const STATUS_DISPLAY_LABELS = {
+  Подтверждён: 'В работе',
+  'В печати': 'В работе',
+  Готов: 'Готов к выдаче',
 };
 
 function statusSlug(status) {
@@ -348,9 +356,14 @@ function statusSlug(status) {
   return STATUS_SLUGS[label] || 'new';
 }
 
-function statusBadge(status) {
+function statusDisplayLabel(status) {
   const label = statusLabel(status);
-  return `<span class="order-status order-status--${statusSlug(label)}">${escapeHtml(label)}</span>`;
+  return STATUS_DISPLAY_LABELS[label] || label;
+}
+
+function statusBadge(status) {
+  const label = statusDisplayLabel(status);
+  return `<span class="order-status order-status--${statusSlug(status)}">${escapeHtml(label)}</span>`;
 }
 
 function normalizeRemoteOrder(o) {
