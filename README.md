@@ -46,6 +46,7 @@ Telegram Mini App открывается только по **публичном�
 - **ngrok**: `ngrok http 5173` (при `npm run dev`) или `ngrok http 4173` (при `npm run preview`)
 - **Cloudflare Tunnel**, **localtunnel**, **serveo** — аналогично
 - Постоянно: Vercel / Netlify / Cloudflare Pages / любой статический хостинг после `npm run build` (папка `dist/`)
+- **Timeweb Apps**: ветка `master`, тип **HTML/CSS/JS**, директория проекта **`dist`** (там лежит `index.html`). Альтернатива — ветка `deploy` (статика в корне + минимальный `package.json`). Node предпочтительно **18** или **20**, не 24.
 
 Скопируйте выданный `https://….ngrok-free.app` (или ваш домен).
 
