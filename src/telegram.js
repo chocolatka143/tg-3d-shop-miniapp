@@ -11,7 +11,7 @@ export function initTelegram() {
     // Бренд Бубер 3D: фиксируем свою палитру, не подмешиваем тему Telegram
     if (tg.setHeaderColor) {
       try {
-        tg.setHeaderColor('#0a0a0a');
+        tg.setHeaderColor('#f7f5f2');
       } catch (_) {
         try {
           tg.setHeaderColor('bg_color');
@@ -22,7 +22,7 @@ export function initTelegram() {
     }
     if (tg.setBackgroundColor) {
       try {
-        tg.setBackgroundColor('#0a0a0a');
+        tg.setBackgroundColor('#f7f5f2');
       } catch (_) {
         /* ignore */
       }
@@ -31,7 +31,7 @@ export function initTelegram() {
       try {
         tg.MainButton.setParams({
           color: '#ff8a1f',
-          text_color: '#0a0a0a',
+          text_color: '#ffffff',
         });
       } catch (_) {
         /* ignore */
