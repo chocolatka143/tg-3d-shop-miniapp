@@ -154,9 +154,9 @@ export const SHOP = {
   telegramUsername: 'bubershop3d',
   sbpHint: 'Реквизиты СБП пришлём в чат после подтверждения заказа',
   /** URL веб-приложения Apps Script (.../exec). Пусто = без таблицы, только копирование + Telegram */
-  orderWebhookUrl: '',
+  orderWebhookUrl: 'https://script.google.com/macros/s/AKfycbyEge9hsESqmULqqB4phuHht176j5mZzufJ79xXph4grfpUgIJGJp2R7_M7gMKk3GOI/exec',
   /** Тот же WEBHOOK_SECRET, что в свойствах скрипта. Не коммитьте реальный секрет */
-  orderWebhookSecret: '',
+  orderWebhookSecret: 'FREKF21',
 };
 
 export const PAYMENT_METHODS = [
