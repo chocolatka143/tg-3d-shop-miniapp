@@ -1,5 +1,5 @@
 import './style.css';
-import { PRODUCTS, MATERIALS, COLORS, SIZES } from './data.js';
+import { PRODUCTS, MATERIALS, COLORS, SIZES, SHOP, PAYMENT_METHODS } from './data.js';
 import {
   initTelegram,
   getTelegram,
@@ -12,6 +12,7 @@ import {
 
 const STORAGE_KEY = 'tg3d_cart_v1';
 const THEME_KEY = 'buber-theme';
+const ORDERS_KEY = 'tg3d_orders_v1';
 
 /** @typedef {{ type: 'product'|'custom', id: string, name: string, price: number, qty: number, emoji?: string, color?: string, material?: string, size?: string, stlName?: string, comment?: string, productColor?: string }} CartItem */
 
@@ -20,6 +21,14 @@ const state = {
   productId: null,
   cart: loadCart(),
   lastOrder: null,
+  checkout: {
+    name: '',
+    phone: '',
+    telegram: '',
+    payment: 'sbp',
+    comment: '',
+    error: '',
+  },
   custom: {
     material: MATERIALS[0],
     colorId: COLORS[0].id,
@@ -173,11 +182,139 @@ function removeFromCart(id) {
   render();
 }
 
+function prefillCheckoutFromTg() {
+  const user = getUser();
+  if (!user) return;
+  if (!state.checkout.telegram && user.username) {
+    state.checkout.telegram = '@' + user.username;
+  }
+  if (!state.checkout.name && user.first_name) {
+    const parts = [user.first_name, user.last_name].filter(Boolean);
+    state.checkout.name = parts.join(' ');
+  }
+}
+
+function syncCheckoutFromDom() {
+  const name = document.getElementById('co-name');
+  const phone = document.getElementById('co-phone');
+  const telegram = document.getElementById('co-telegram');
+  const comment = document.getElementById('co-comment');
+  const pay = document.querySelector('input[name="co-payment"]:checked');
+  if (name) state.checkout.name = name.value.trim();
+  if (phone) state.checkout.phone = phone.value.trim();
+  if (telegram) state.checkout.telegram = telegram.value.trim();
+  if (comment) state.checkout.comment = comment.value.trim();
+  if (pay) state.checkout.payment = pay.value;
+}
+
+function validateCheckout() {
+  syncCheckoutFromDom();
+  const phone = state.checkout.phone;
+  const tgContact = state.checkout.telegram.replace(/^@/, '').trim();
+  if (!phone && !tgContact) {
+    state.checkout.error = 'Укажите телефон или @username Telegram — так мы свяжемся с вами';
+    return false;
+  }
+  state.checkout.error = '';
+  return true;
+}
+
+function paymentLabel(id) {
+  return PAYMENT_METHODS.find((p) => p.id === id)?.label || id;
+}
+
+function formatOrderText(order) {
+  const lines = [];
+  lines.push(`Заказ «${SHOP.name}»`);
+  lines.push(`Дата: ${new Date(order.createdAt).toLocaleString('ru-RU')}`);
+  lines.push(`Город: ${SHOP.city}`);
+  lines.push('');
+  lines.push('Товары:');
+  order.items.forEach((i, idx) => {
+    const bits = [];
+    if (i.material) bits.push(i.material);
+    if (i.color) bits.push(i.color);
+    if (i.size) bits.push(i.size);
+    if (i.stlName) bits.push(`файл: ${i.stlName}`);
+    const meta = bits.length ? ` (${bits.join(', ')})` : '';
+    const itemComment = i.comment ? ` — ${i.comment}` : '';
+    lines.push(`${idx + 1}. ${i.name} × ${i.qty} — ${formatRub(i.price * i.qty)}${meta}${itemComment}`);
+  });
+  lines.push('');
+  lines.push(`Итого: ${formatRub(order.totalRub)}`);
+  lines.push(`Оплата: ${paymentLabel(order.checkout.payment)}`);
+  if (order.checkout.name) lines.push(`Имя: ${order.checkout.name}`);
+  if (order.checkout.phone) lines.push(`Телефон: ${order.checkout.phone}`);
+  if (order.checkout.telegram) lines.push(`Telegram: ${order.checkout.telegram}`);
+  if (order.checkout.comment) lines.push(`Комментарий: ${order.checkout.comment}`);
+  lines.push('');
+  if (order.checkout.payment === 'sbp') {
+    lines.push(SHOP.sbpHint);
+  } else {
+    lines.push('Оплата наличными при встрече / самовывозе.');
+  }
+  return lines.join('\n');
+}
+
+function shopTelegramUrl(orderText) {
+  const u = (SHOP.telegramUsername || '').replace(/^@/, '').trim();
+  if (!u) return null;
+  const base = `https://t.me/${u}`;
+  if (!orderText) return base;
+  return `${base}?text=${encodeURIComponent(orderText)}`;
+}
+
+function saveOrderLocal(order) {
+  try {
+    const prev = JSON.parse(localStorage.getItem(ORDERS_KEY) || '[]');
+    prev.unshift(order);
+    localStorage.setItem(ORDERS_KEY, JSON.stringify(prev.slice(0, 30)));
+  } catch (_) {
+    /* ignore */
+  }
+}
+
+async function copyText(text) {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch (_) {
+    /* fall through */
+  }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  } catch (_) {
+    return false;
+  }
+}
+
 function placeOrder() {
   if (!state.cart.length) return;
+  if (!validateCheckout()) {
+    haptic('light');
+    render();
+    const err = document.getElementById('co-error');
+    if (err) err.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
+  }
+
   const user = getUser();
+  const tgContact = state.checkout.telegram.trim();
   const order = {
     createdAt: new Date().toISOString(),
+    shop: SHOP.name,
+    city: SHOP.city,
     user: user
       ? {
           id: user.id,
@@ -186,14 +323,25 @@ function placeOrder() {
           last_name: user.last_name,
         }
       : null,
-    items: state.cart,
+    checkout: {
+      name: state.checkout.name,
+      phone: state.checkout.phone,
+      telegram: tgContact,
+      payment: state.checkout.payment,
+      comment: state.checkout.comment,
+    },
+    items: state.cart.map((i) => ({ ...i })),
     totalRub: cartTotal(),
-    note: 'Демо-заказ (без бэкенда). Сохранён локально в Mini App.',
+    note:
+      'Заказ без онлайн-оплаты. Свяжемся для подтверждения. СБП — реквизиты в чат; наличные — при встрече.',
   };
+  order.text = formatOrderText(order);
   state.lastOrder = order;
+  saveOrderLocal(order);
   console.log('ORDER JSON:', JSON.stringify(order, null, 2));
   state.cart = [];
   saveCart();
+  state.checkout.error = '';
   haptic('heavy');
   navigate('success');
 }
@@ -409,6 +557,27 @@ function renderCart() {
     })
     .join('');
 
+  const co = state.checkout;
+  const payRadios = PAYMENT_METHODS.map(
+    (p) => `
+    <label class="pay-option ${co.payment === p.id ? 'selected' : ''}">
+      <input type="radio" name="co-payment" value="${p.id}" ${co.payment === p.id ? 'checked' : ''} data-action="pick-payment" />
+      <span class="pay-option-body">
+        <span class="pay-option-title">${escapeHtml(p.label)}</span>
+        <span class="pay-option-hint">${escapeHtml(p.hint)}</span>
+      </span>
+    </label>`
+  ).join('');
+
+  const sbpNote =
+    co.payment === 'sbp'
+      ? `<p class="checkout-note">${escapeHtml(SHOP.sbpHint)}</p>`
+      : `<p class="checkout-note">Оплата наличными при встрече или самовывозе в ${escapeHtml(SHOP.city)}.</p>`;
+
+  const errHtml = co.error
+    ? `<p class="form-error" id="co-error">${escapeHtml(co.error)}</p>`
+    : '<div id="co-error"></div>';
+
   return `
     ${header('Корзина')}
     <div class="screen">
@@ -417,27 +586,78 @@ function renderCart() {
         <span>Итого</span>
         <span class="sum">${formatRub(cartTotal())}</span>
       </div>
-      <p style="color:var(--tg-hint);font-size:0.8rem;margin-bottom:12px">
-        Оплата и доставка подключим позже. Сейчас заказ сохранится локально (JSON в консоли).
-      </p>
-      <button class="btn btn-primary" data-action="checkout">Оформить заказ</button>
-      <button class="btn btn-secondary" data-action="home">Продолжить покупки</button>
+
+      <section class="checkout-block">
+        <h3 class="section-title">Оформление</h3>
+        <p class="checkout-intro">
+          После заказа мы свяжемся с вами в Telegram или по телефону, подтвердим детали и способ получения.
+          Онлайн-оплаты пока нет: <strong>СБП</strong> — перевод по реквизитам после подтверждения;
+          <strong>наличные</strong> — при встрече / самовывозе.
+        </p>
+
+        <div class="form-group">
+          <label for="co-name">Имя <span class="opt">(необязательно)</span></label>
+          <input type="text" id="co-name" autocomplete="name" placeholder="Как к вам обращаться" value="${escapeHtml(co.name)}" />
+        </div>
+
+        <div class="form-group">
+          <label for="co-phone">Телефон</label>
+          <input type="tel" id="co-phone" autocomplete="tel" inputmode="tel" placeholder="+7 …" value="${escapeHtml(co.phone)}" />
+        </div>
+
+        <div class="form-group">
+          <label for="co-telegram">Telegram @username</label>
+          <input type="text" id="co-telegram" autocomplete="username" placeholder="@username" value="${escapeHtml(co.telegram)}" />
+        </div>
+        <p class="field-hint">Нужен хотя бы один контакт: телефон или @username.</p>
+
+        <div class="form-group">
+          <label>Способ оплаты</label>
+          <div class="pay-list">${payRadios}</div>
+        </div>
+        ${sbpNote}
+
+        <div class="form-group">
+          <label for="co-comment">Комментарий к доставке / встрече <span class="opt">(необязательно)</span></label>
+          <textarea id="co-comment" placeholder="Район, метро, удобное время, самовывоз…">${escapeHtml(co.comment)}</textarea>
+        </div>
+
+        ${errHtml}
+
+        <button class="btn btn-primary" data-action="checkout">Оформить заказ · ${formatRub(cartTotal())}</button>
+        <button class="btn btn-secondary" data-action="home">Продолжить покупки</button>
+      </section>
     </div>
   `;
 }
 
 function renderSuccess() {
   const order = state.lastOrder;
-  const json = order ? JSON.stringify(order, null, 2) : '{}';
+  const text = order?.text || '';
+  const tgUrl = shopTelegramUrl(text);
+  const pay = order?.checkout?.payment;
+  const payHint =
+    pay === 'cash'
+      ? 'Оплата наличными при встрече или самовывозе.'
+      : SHOP.sbpHint;
+
+  const contactBlock = tgUrl
+    ? `<a class="btn btn-primary" href="${escapeHtml(tgUrl)}" target="_blank" rel="noopener">Написать нам в Telegram</a>
+       <button class="btn btn-secondary" data-action="copy-order">Скопировать заказ</button>`
+    : `<p class="checkout-note">Заказ сохранён на этом устройстве. Скопируйте текст и пришлите его в наш Telegram-бот или чат.</p>
+       <button class="btn btn-primary" data-action="copy-order">Скопировать заказ</button>`;
+
   return `
     ${header('Готово', { cart: false })}
     <div class="screen">
       <div class="success">
         <div class="emoji">✅</div>
-        <h2>Заказ принят (демо)</h2>
-        <p>Бэкенда пока нет — заказ собран в JSON. Ниже превью для проверки.</p>
-        <pre>${escapeHtml(json)}</pre>
-        <button class="btn btn-primary" data-action="home">В каталог</button>
+        <h2>Заказ оформлен</h2>
+        <p>Мы свяжемся с вами для подтверждения. ${escapeHtml(payHint)}</p>
+        <div class="order-summary" id="order-summary">${escapeHtml(text)}</div>
+        <p class="copy-status" id="copy-status" hidden></p>
+        ${contactBlock}
+        <button class="btn btn-secondary" data-action="home">В каталог</button>
       </div>
     </div>
   `;
@@ -508,6 +728,7 @@ function bindEvents() {
         toggleTheme();
         // обновить иконку в шапке без сброса формы — полный render ок
         if (state.screen === 'custom') syncCustomFromDom();
+        if (state.screen === 'cart') syncCheckoutFromDom();
         render();
         return;
       }
@@ -551,9 +772,49 @@ function bindEvents() {
         removeFromCart(id);
         return;
       }
+      if (action === 'pick-payment') {
+        syncCheckoutFromDom();
+        state.checkout.payment = el.getAttribute('value') || state.checkout.payment;
+        state.checkout.error = '';
+        render();
+        return;
+      }
       if (action === 'checkout') {
         placeOrder();
         return;
+      }
+      if (action === 'copy-order') {
+        const order = state.lastOrder;
+        const t = order?.text || '';
+        copyText(t).then((ok) => {
+          const status = document.getElementById('copy-status');
+          if (status) {
+            status.hidden = false;
+            status.textContent = ok
+              ? 'Скопировано — вставьте в чат с нами'
+              : 'Не удалось скопировать — выделите текст вручную';
+          }
+          haptic(ok ? 'medium' : 'light');
+        });
+        return;
+      }
+    });
+  });
+
+  // live sync checkout fields
+  ['co-name', 'co-phone', 'co-telegram', 'co-comment'].forEach((fid) => {
+    const el = document.getElementById(fid);
+    if (!el) return;
+    el.addEventListener('input', () => {
+      syncCheckoutFromDom();
+      if (state.checkout.error) {
+        const phone = state.checkout.phone;
+        const tgContact = state.checkout.telegram.replace(/^@/, '').trim();
+        if (phone || tgContact) {
+          state.checkout.error = '';
+          const err = document.getElementById('co-error');
+          if (err) err.textContent = '';
+        }
       }
     });
   });
@@ -581,6 +842,7 @@ function bindEvents() {
 }
 
 // Boot
+prefillCheckoutFromTg();
 render();
 
 if (tg) {

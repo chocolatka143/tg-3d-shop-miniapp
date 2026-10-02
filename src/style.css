@@ -349,6 +349,7 @@ body {
 
 .form-group input[type='text'],
 .form-group input[type='number'],
+.form-group input[type='tel'],
 .form-group textarea,
 .form-group select {
   width: 100%;
@@ -368,7 +369,8 @@ body {
 
 .form-group input:focus,
 .form-group textarea:focus,
-.form-group select:focus {
+.form-group select:focus,
+.form-group input[type='tel']:focus {
   border-color: var(--tg-button);
 }
 
@@ -485,6 +487,7 @@ body {
   background: var(--tg-secondary-bg);
   border-radius: var(--card-radius);
   margin-bottom: 10px;
+  border: 1.5px solid var(--card-border);
 }
 
 .cart-item .thumb {
@@ -639,3 +642,139 @@ body {
 .price {
   color: var(--brand-orange) !important;
 }
+
+/* Checkout */
+.checkout-block {
+  margin-top: 8px;
+  padding: 16px;
+  border-radius: var(--card-radius);
+  background: var(--tg-secondary-bg);
+  border: 1.5px solid var(--card-border);
+}
+
+.checkout-intro {
+  color: var(--tg-hint);
+  font-size: 0.85rem;
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+
+.checkout-intro strong {
+  color: var(--tg-text);
+  font-weight: 600;
+}
+
+.checkout-note {
+  font-size: 0.82rem;
+  color: var(--tg-hint);
+  background: color-mix(in srgb, var(--brand-orange) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--brand-orange) 28%, transparent);
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin: -4px 0 16px;
+}
+
+.field-hint {
+  font-size: 0.78rem;
+  color: var(--tg-hint);
+  margin: -8px 0 14px;
+}
+
+.opt {
+  font-weight: 400;
+  color: var(--tg-hint);
+  font-size: 0.78rem;
+}
+
+.pay-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pay-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1.5px solid var(--card-border);
+  background: var(--tg-bg);
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.pay-option input {
+  margin-top: 3px;
+  accent-color: var(--brand-orange);
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.pay-option.selected {
+  border-color: var(--card-border-hover);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--brand-orange) 25%, transparent);
+  background: color-mix(in srgb, var(--brand-orange) 8%, var(--tg-bg));
+}
+
+.pay-option-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pay-option-title {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--tg-text);
+}
+
+.pay-option-hint {
+  font-size: 0.78rem;
+  color: var(--tg-hint);
+}
+
+.form-error {
+  color: #c0392b;
+  background: color-mix(in srgb, #c0392b 12%, transparent);
+  border: 1px solid color-mix(in srgb, #c0392b 30%, transparent);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 0.85rem;
+  margin-bottom: 12px;
+}
+
+html[data-theme='dark'] .form-error {
+  color: #ff8a80;
+}
+
+.order-summary {
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--tg-secondary-bg);
+  border: 1.5px solid var(--card-border);
+  padding: 14px;
+  border-radius: 12px;
+  font-size: 0.82rem;
+  color: var(--tg-text);
+  margin: 16px 0 12px;
+  max-height: 280px;
+  overflow: auto;
+  line-height: 1.45;
+}
+
+.copy-status {
+  font-size: 0.85rem;
+  color: var(--tg-link);
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+
+.success a.btn {
+  text-decoration: none;
+  margin-bottom: 0;
+}
+
