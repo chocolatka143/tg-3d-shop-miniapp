@@ -26,6 +26,10 @@ const state = {
   history: [],
   cart: loadCart(),
   lastOrder: null,
+  luck: {
+    spinning: false,
+    result: '',
+  },
   checkout: {
     name: '',
     phone: '',
@@ -318,6 +322,28 @@ function makeOrderId() {
 
 function statusLabel(status) {
   return status || 'Новый';
+}
+
+function spinLuckWheel() {
+  if (state.luck.spinning) return;
+
+  state.luck.spinning = true;
+  state.luck.result = '';
+  haptic('medium');
+  render();
+
+  window.setTimeout(() => {
+    const demoResults = [
+      'Демо-приз: скидка 10%',
+      'Демо-приз: доставка в подарок',
+      'Демо-приз: −500 ₽',
+      'Скоро — попробуйте ещё раз',
+    ];
+    state.luck.spinning = false;
+    state.luck.result = demoResults[Math.floor(Math.random() * demoResults.length)];
+    haptic('medium');
+    if (state.screen === 'home' && state.homeTab === 'luck') render();
+  }, 950);
 }
 
 async function copyText(text) {
@@ -631,7 +657,44 @@ function renderTabContent() {
       <p class="tab-lead">Демо-отзывы. Реальные появятся после заказов.</p>
       <div class="reviews-list">${cards}</div>`;
   }
+  if (tab === 'luck') {
+    return renderLuckWheel();
+  }
   return renderProductCards(PRODUCTS);
+}
+
+function renderLuckWheel() {
+  const result = state.luck.result
+    ? `<div class="luck-result" role="status">
+        <span class="luck-result-icon">✨</span>
+        <strong>${escapeHtml(state.luck.result)}</strong>
+        <small>Демо-режим: промокод не создан и в заказ не добавлен.</small>
+      </div>`
+    : '';
+
+  return `
+    <section class="luck-panel" aria-labelledby="luck-title">
+      <div class="luck-heading">
+        <span class="luck-kicker">Демо-механика</span>
+        <h3 class="section-title" id="luck-title">Колесо удачи</h3>
+        <p class="tab-lead">Крутите колесо и ловите будущие подарки от Бубер 3D.</p>
+      </div>
+      <div class="wheel-wrap">
+        <span class="wheel-pointer" aria-hidden="true">▼</span>
+        <div class="luck-wheel ${state.luck.spinning ? 'is-spinning' : ''}" aria-label="Колесо с призами">
+          <span class="wheel-label wheel-label-top">10%</span>
+          <span class="wheel-label wheel-label-right">−500 ₽</span>
+          <span class="wheel-label wheel-label-bottom">Доставка</span>
+          <span class="wheel-label wheel-label-left">Пусто</span>
+          <span class="wheel-hub" aria-hidden="true">🎁</span>
+        </div>
+      </div>
+      <button class="btn btn-primary luck-spin" data-action="spin-luck" ${state.luck.spinning ? 'disabled' : ''}>
+        ${state.luck.spinning ? 'Колесо крутится…' : 'Крутить колесо'}
+      </button>
+      ${result}
+      <p class="luck-note">Все призы на экране — макет. Реальная логика промокодов появится позже.</p>
+    </section>`;
 }
 
 function renderHome() {
@@ -1037,6 +1100,10 @@ function bindEvents() {
         state.homeTab = id || 'all';
         haptic('light');
         render();
+        return;
+      }
+      if (action === 'spin-luck') {
+        spinLuckWheel();
         return;
       }
       if (action === 'cart') return navigate('cart');

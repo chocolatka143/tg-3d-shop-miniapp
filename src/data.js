@@ -76,6 +76,7 @@ export const HOME_TABS = [
   { id: 'faq', label: 'FAQ' },
   { id: 'portfolio', label: 'Портфолио' },
   { id: 'reviews', label: 'Отзывы' },
+  { id: 'luck', label: '🎡 Удача' },
 ];
 
 export const FAQ_ITEMS = [

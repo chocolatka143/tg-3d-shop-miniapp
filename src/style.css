@@ -1072,3 +1072,195 @@ html[data-theme='dark'] .order-status {
   color: var(--tg-link);
   font-size: 0.95rem;
 }
+
+/* Колесо удачи (макет без промокодов и сохранения приза) */
+.luck-panel {
+  padding: 18px 14px 20px;
+  border-radius: var(--card-radius);
+  background: var(--tg-secondary-bg);
+  border: 1.5px solid var(--card-border);
+  overflow: hidden;
+}
+
+.luck-heading {
+  text-align: center;
+}
+
+.luck-heading .section-title {
+  margin: 4px 0 4px;
+}
+
+.luck-heading .tab-lead {
+  margin-bottom: 4px;
+}
+
+.luck-kicker {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  color: var(--brand-orange-deep);
+  background: color-mix(in srgb, var(--brand-orange) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--brand-orange) 36%, transparent);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+html[data-theme='dark'] .luck-kicker {
+  color: var(--brand-orange);
+}
+
+.wheel-wrap {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: min(100%, 286px);
+  aspect-ratio: 1;
+  margin: 18px auto 20px;
+}
+
+.wheel-pointer {
+  position: absolute;
+  z-index: 3;
+  top: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: var(--brand-orange-deep);
+  font-size: 2rem;
+  line-height: 1;
+  filter: drop-shadow(0 2px 2px color-mix(in srgb, var(--brand-black) 28%, transparent));
+}
+
+html[data-theme='dark'] .wheel-pointer {
+  color: var(--brand-orange);
+}
+
+.luck-wheel {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border: 8px solid var(--tg-secondary-bg);
+  border-radius: 50%;
+  background: conic-gradient(
+    from -45deg,
+    #ff8a1f 0deg 90deg,
+    #ffca5c 90deg 180deg,
+    #55c98a 180deg 270deg,
+    #ef6b62 270deg 360deg
+  );
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--brand-orange) 24%, transparent),
+    0 0 0 2px color-mix(in srgb, var(--brand-orange) 42%, transparent);
+  transition: transform 0.15s ease;
+}
+
+.luck-wheel.is-spinning {
+  animation: luckSpin 0.95s cubic-bezier(0.15, 0.7, 0.2, 1);
+}
+
+@keyframes luckSpin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(900deg);
+  }
+}
+
+.wheel-label {
+  position: absolute;
+  z-index: 1;
+  width: 45%;
+  color: #2b1a0d;
+  font-size: clamp(0.8rem, 3.8vw, 1rem);
+  font-weight: 800;
+  line-height: 1.1;
+  text-align: center;
+  text-shadow: 0 1px rgba(255, 255, 255, 0.35);
+}
+
+.wheel-label-top {
+  top: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.wheel-label-right {
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+}
+
+.wheel-label-bottom {
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.wheel-label-left {
+  top: 50%;
+  left: 8px;
+  transform: translateY(-50%);
+}
+
+.wheel-hub {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  place-items: center;
+  width: 62px;
+  height: 62px;
+  border: 5px solid var(--tg-secondary-bg);
+  border-radius: 50%;
+  background: var(--brand-orange);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  font-size: 1.6rem;
+  transform: translate(-50%, -50%);
+}
+
+.luck-spin {
+  margin-top: 0;
+}
+
+.luck-spin:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
+.luck-result {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin-top: 14px;
+  padding: 14px 12px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--brand-orange) 13%, var(--tg-bg));
+  border: 1px solid color-mix(in srgb, var(--brand-orange) 42%, transparent);
+  text-align: center;
+}
+
+.luck-result-icon {
+  font-size: 1.6rem;
+}
+
+.luck-result strong {
+  color: var(--brand-orange-deep);
+}
+
+html[data-theme='dark'] .luck-result strong {
+  color: var(--brand-orange);
+}
+
+.luck-result small,
+.luck-note {
+  color: var(--tg-hint);
+  font-size: 0.78rem;
+}
+
+.luck-note {
+  margin-top: 12px;
+  text-align: center;
+}
