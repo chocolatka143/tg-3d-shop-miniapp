@@ -1059,61 +1059,61 @@ html[data-theme='dark'] .placeholder-badge {
 }
 
 /* Статусы: белый — новый, оранжевый — в работе, зелёный — готов к выдаче. */
-.order-status--new {
+.status-new {
   color: #1f2937;
   background: #ffffff;
-  border-color: #cbd5e1;
+  border-color: #1f2937;
 }
 
-.order-status--working {
+.status-work {
   color: #4a2500;
   background: #ff8a1f;
   border-color: #e06f0a;
 }
 
-.order-status--ready {
+.status-ready {
   color: #14532d;
   background: #22c55e;
   border-color: #15803d;
 }
 
-.order-status--done {
+.status-done {
   color: #3f3f46;
   background: #e4e4e7;
   border-color: #a1a1aa;
 }
 
-.order-status--cancelled {
+.status-cancelled {
   color: #991b1b;
   background: #fee2e2;
   border-color: #ef4444;
 }
 
-html[data-theme='dark'] .order-status--new {
+html[data-theme='dark'] .status-new {
   color: #111827;
   background: #ffffff;
-  border-color: #e5e7eb;
+  border-color: #111827;
 }
 
-html[data-theme='dark'] .order-status--working {
+html[data-theme='dark'] .status-work {
   color: #2b1600;
   background: #ff8a1f;
   border-color: #ffad61;
 }
 
-html[data-theme='dark'] .order-status--ready {
+html[data-theme='dark'] .status-ready {
   color: #052e16;
   background: #4ade80;
   border-color: #86efac;
 }
 
-html[data-theme='dark'] .order-status--done {
+html[data-theme='dark'] .status-done {
   color: #27272a;
   background: #d4d4d8;
   border-color: #a1a1aa;
 }
 
-html[data-theme='dark'] .order-status--cancelled {
+html[data-theme='dark'] .status-cancelled {
   color: #450a0a;
   background: #fca5a5;
   border-color: #ef4444;

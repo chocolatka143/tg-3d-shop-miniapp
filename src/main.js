@@ -330,40 +330,53 @@ function makeOrderId() {
   return `ord_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 }
 
+const STATUS_LABELS = {
+  new: 'Новый',
+  work: 'В работе',
+  ready: 'Готов к выдаче',
+  done: 'Выдан',
+  cancelled: 'Отменён',
+};
+
+// Таблица может содержать старые названия статусов. Сначала приводим их к
+// одному ключу, а уже затем строим CSS-класс — иначе любой новый вариант
+// незаметно попадал в один и тот же цвет.
+const STATUS_ALIASES = {
+  '': 'new',
+  новый: 'new',
+  new: 'new',
+  'в работе': 'work',
+  работа: 'work',
+  work: 'work',
+  working: 'work',
+  подтвержден: 'work',
+  подтверждён: 'work',
+  'в печати': 'work',
+  готов: 'ready',
+  ready: 'ready',
+  'готов к выдаче': 'ready',
+  выдан: 'done',
+  done: 'done',
+  отменен: 'cancelled',
+  отменён: 'cancelled',
+  cancelled: 'cancelled',
+};
+
+function normalizeStatus(status) {
+  const value = String(status ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLocaleLowerCase('ru-RU');
+  return STATUS_ALIASES[value] || 'new';
+}
+
 function statusLabel(status) {
-  return status || 'Новый';
-}
-
-const STATUS_SLUGS = {
-  Новый: 'new',
-  'В работе': 'working',
-  Подтверждён: 'working',
-  'В печати': 'working',
-  Готов: 'ready',
-  'Готов к выдаче': 'ready',
-  Выдан: 'done',
-  Отменён: 'cancelled',
-};
-
-const STATUS_DISPLAY_LABELS = {
-  Подтверждён: 'В работе',
-  'В печати': 'В работе',
-  Готов: 'Готов к выдаче',
-};
-
-function statusSlug(status) {
-  const label = statusLabel(status);
-  return STATUS_SLUGS[label] || 'new';
-}
-
-function statusDisplayLabel(status) {
-  const label = statusLabel(status);
-  return STATUS_DISPLAY_LABELS[label] || label;
+  return STATUS_LABELS[normalizeStatus(status)];
 }
 
 function statusBadge(status) {
-  const label = statusDisplayLabel(status);
-  return `<span class="order-status order-status--${statusSlug(status)}">${escapeHtml(label)}</span>`;
+  const normalized = normalizeStatus(status);
+  return `<span class="order-status status-${normalized}">${escapeHtml(STATUS_LABELS[normalized])}</span>`;
 }
 
 function normalizeRemoteOrder(o) {
