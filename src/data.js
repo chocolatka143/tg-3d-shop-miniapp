@@ -50,6 +50,16 @@ export const PRODUCTS = [
     emoji: '⚙️',
     material: 'PETG',
   },
+  {
+    id: 'p-filament',
+    name: 'Филамент',
+    price: 1800,
+    short: 'Катушка PLA или PETG, цвет на выбор',
+    desc: 'Катушка филамента PLA или PETG для 3D-печати. Выберите материал и цвет при заказе.',
+    color: '#ff8a1f',
+    emoji: '🧵',
+    material: 'PLA',
+  },
 ];
 
 export const MATERIALS = ['PLA', 'PETG', 'ABS', 'TPU', 'Другой'];
