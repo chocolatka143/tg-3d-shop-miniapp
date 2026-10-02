@@ -1,0 +1,8 @@
+{
+  "name": "tg-3d-shop-miniapp",
+  "private": true,
+  "description": "Static Telegram Mini App (HTML/CSS/JS for Timeweb Apps)",
+  "engines": {
+    "node": ">=18 <23"
+  }
+}
