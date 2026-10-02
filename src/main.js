@@ -1,5 +1,5 @@
 import './style.css';
-import { PRODUCTS, MATERIALS, COLORS, SIZES, SHOP, PAYMENT_METHODS, HOME_TABS, FAQ_ITEMS, PORTFOLIO_STUBS, REVIEW_STUBS } from './data.js';
+import { PRODUCTS, MATERIALS, COLORS, SIZES, SHOP, PAYMENT_METHODS, HOME_TABS, FAQ_ITEMS, PORTFOLIO_ITEMS, REVIEW_STUBS } from './data.js';
 import {
   initTelegram,
   getTelegram,
@@ -601,19 +601,19 @@ function renderTabContent() {
       <button class="btn btn-secondary" data-action="custom">Свой вариант →</button>`;
   }
   if (tab === 'portfolio') {
-    const cards = PORTFOLIO_STUBS.map(
+    const cards = PORTFOLIO_ITEMS.map(
       (p) => `
       <article class="portfolio-card">
-        <div class="portfolio-img">${p.emoji}</div>
-        <h4>${escapeHtml(p.title)}</h4>
-        <span class="placeholder-badge">${escapeHtml(p.note)}</span>
+        <img class="portfolio-img" src="${escapeHtml(p.image)}" alt="${escapeHtml(p.alt || p.title)}" loading="lazy" width="1200" height="1600" />
+        <div class="portfolio-caption">
+          <h4>${escapeHtml(p.title)}</h4>
+        </div>
       </article>`
     ).join('');
     return `
       <h3 class="section-title">Портфолио</h3>
-      <p class="tab-lead">Примеры работ появятся здесь. Пока — заглушки.</p>
-      <div class="portfolio-grid">${cards}</div>
-      <p class="tab-soon">Скоро</p>`;
+      <p class="tab-lead">Примеры работ Бубер 3D</p>
+      <div class="portfolio-grid">${cards}</div>`;
   }
   if (tab === 'reviews') {
     const cards = REVIEW_STUBS.map(

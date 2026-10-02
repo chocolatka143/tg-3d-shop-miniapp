@@ -97,11 +97,12 @@ export const FAQ_ITEMS = [
   },
 ];
 
-export const PORTFOLIO_STUBS = [
-  { emoji: '🔑', title: 'Брелки и мерч', note: 'Скоро фото' },
-  { emoji: '🧍', title: 'Фигурки', note: 'Скоро фото' },
-  { emoji: '🪴', title: 'Декор', note: 'Скоро фото' },
-  { emoji: '⚙️', title: 'Прототипы', note: 'Скоро фото' },
+export const PORTFOLIO_ITEMS = [
+  {
+    image: '/portfolio/modular-wall-organizer.jpg',
+    title: 'Модульный органайзер на стену',
+    alt: 'Модульный настенный органайзер с держателями для наушников и игрового контроллера',
+  },
 ];
 
 export const REVIEW_STUBS = [

@@ -944,31 +944,33 @@ html[data-theme='dark'] .placeholder-badge {
 
 .portfolio-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: var(--gap);
 }
 
 .portfolio-card {
+  overflow: hidden;
   background: var(--tg-secondary-bg);
   border: 1.5px solid var(--card-border);
   border-radius: var(--card-radius);
-  padding: 14px 12px 16px;
-  text-align: center;
 }
 
 .portfolio-img {
-  height: 72px;
-  display: grid;
-  place-items: center;
-  font-size: 2.2rem;
-  margin-bottom: 8px;
-  border-radius: 12px;
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 3 / 4;
+  object-fit: cover;
   background: color-mix(in srgb, var(--brand-orange) 10%, transparent);
 }
 
+.portfolio-caption {
+  padding: 12px 14px 14px;
+}
+
 .portfolio-card h4 {
-  font-size: 0.9rem;
-  margin-bottom: 8px;
+  font-size: 0.95rem;
+  margin: 0;
 }
 
 .reviews-list {
