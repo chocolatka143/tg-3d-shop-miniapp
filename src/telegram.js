@@ -3,40 +3,51 @@
 const tg = typeof window !== 'undefined' ? window.Telegram?.WebApp : null;
 let mainButtonHandler = null;
 
-export function initTelegram() {
+const THEME_CHROME = {
+  light: '#f7f5f2',
+  dark: '#0a0a0a',
+};
+
+/** Синхронизация header/bg Telegram с нашей темой. MainButton остаётся оранжевым. */
+export function applyTelegramChrome(theme = 'light') {
+  if (!tg) return;
+  const color = THEME_CHROME[theme] || THEME_CHROME.light;
+  if (tg.setHeaderColor) {
+    try {
+      tg.setHeaderColor(color);
+    } catch (_) {
+      try {
+        tg.setHeaderColor('bg_color');
+      } catch (__) {
+        /* ignore older clients */
+      }
+    }
+  }
+  if (tg.setBackgroundColor) {
+    try {
+      tg.setBackgroundColor(color);
+    } catch (_) {
+      /* ignore */
+    }
+  }
+  if (tg.MainButton?.setParams) {
+    try {
+      tg.MainButton.setParams({
+        color: '#ff8a1f',
+        text_color: '#ffffff',
+      });
+    } catch (_) {
+      /* ignore */
+    }
+  }
+}
+
+export function initTelegram(theme = 'light') {
   if (!tg) return null;
   try {
     tg.ready();
     tg.expand();
-    // Бренд Бубер 3D: фиксируем свою палитру, не подмешиваем тему Telegram
-    if (tg.setHeaderColor) {
-      try {
-        tg.setHeaderColor('#f7f5f2');
-      } catch (_) {
-        try {
-          tg.setHeaderColor('bg_color');
-        } catch (__) {
-          /* ignore older clients */
-        }
-      }
-    }
-    if (tg.setBackgroundColor) {
-      try {
-        tg.setBackgroundColor('#f7f5f2');
-      } catch (_) {
-        /* ignore */
-      }
-    }
-    if (tg.MainButton?.setParams) {
-      try {
-        tg.MainButton.setParams({
-          color: '#ff8a1f',
-          text_color: '#ffffff',
-        });
-      } catch (_) {
-        /* ignore */
-      }
-    }
+    applyTelegramChrome(theme);
   } catch (e) {
     console.warn('Telegram init:', e);
   }

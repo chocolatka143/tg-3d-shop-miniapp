@@ -3,13 +3,6 @@
   --brand-orange-deep: #e06f0a;
   --brand-black: #0a0a0a;
   --brand-white: #ffffff;
-  --tg-bg: #f7f5f2;
-  --tg-text: #0a0a0a;
-  --tg-hint: #6b6b6b;
-  --tg-link: #e06f0a;
-  --tg-button: #ff8a1f;
-  --tg-button-text: #ffffff;
-  --tg-secondary-bg: #ffffff;
   --card-radius: 16px;
   --gap: 12px;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -17,7 +10,36 @@
   line-height: 1.45;
   color: var(--tg-text);
   background: var(--tg-bg);
+}
+
+html[data-theme='light'] {
+  --tg-bg: #f7f5f2;
+  --tg-text: #0a0a0a;
+  --tg-hint: #6b6b6b;
+  --tg-link: #e06f0a;
+  --tg-button: #ff8a1f;
+  --tg-button-text: #ffffff;
+  --tg-secondary-bg: #ffffff;
+  --card-border: color-mix(in srgb, var(--brand-orange) 42%, #edd9c8);
+  --card-border-hover: color-mix(in srgb, var(--brand-orange) 65%, #edd9c8);
+  --hero-grad: linear-gradient(145deg, #fff8f0 0%, #ffe4c4 55%, #ffd4a8 100%);
+  --hero-border: color-mix(in srgb, var(--brand-orange) 40%, transparent);
   color-scheme: light;
+}
+
+html[data-theme='dark'] {
+  --tg-bg: #0a0a0a;
+  --tg-text: #ffffff;
+  --tg-hint: #a3a3a3;
+  --tg-link: #ff8a1f;
+  --tg-button: #ff8a1f;
+  --tg-button-text: #ffffff;
+  --tg-secondary-bg: #161616;
+  --card-border: color-mix(in srgb, var(--brand-orange) 30%, #2a2a2a);
+  --card-border-hover: color-mix(in srgb, var(--brand-orange) 48%, #2a2a2a);
+  --hero-grad: linear-gradient(145deg, #1a140e 0%, #24180f 55%, #1c120a 100%);
+  --hero-border: color-mix(in srgb, var(--brand-orange) 28%, transparent);
+  color-scheme: dark;
 }
 
 *,
@@ -158,6 +180,11 @@ body {
   place-items: center;
 }
 
+.btn-theme {
+  font-size: 1.05rem;
+  border: 1px solid var(--card-border);
+}
+
 /* Screens */
 .screen {
   padding: 16px;
@@ -179,8 +206,8 @@ body {
   margin-bottom: 18px;
   padding: 18px;
   border-radius: var(--card-radius);
-  background: linear-gradient(145deg, #fff8f0 0%, #ffe4c4 55%, #ffd4a8 100%);
-  border: 1px solid color-mix(in srgb, var(--brand-orange) 40%, transparent);
+  background: var(--hero-grad);
+  border: 1px solid var(--hero-border);
 }
 
 .hero h2 {
@@ -222,14 +249,14 @@ body {
   border-radius: var(--card-radius);
   overflow: hidden;
   cursor: pointer;
-  border: 1.5px solid color-mix(in srgb, var(--brand-orange) 42%, #edd9c8);
+  border: 1.5px solid var(--card-border);
   box-shadow: 0 1px 3px color-mix(in srgb, var(--brand-black) 5%, transparent);
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 
 .card:hover,
 .card:active {
-  border-color: color-mix(in srgb, var(--brand-orange) 65%, #edd9c8);
+  border-color: var(--card-border-hover);
   box-shadow: 0 2px 8px color-mix(in srgb, var(--brand-orange) 16%, transparent);
 }
 

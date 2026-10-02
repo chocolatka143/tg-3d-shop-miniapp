@@ -7,9 +7,11 @@ import {
   hideMainButton,
   haptic,
   getUser,
+  applyTelegramChrome,
 } from './telegram.js';
 
 const STORAGE_KEY = 'tg3d_cart_v1';
+const THEME_KEY = 'buber-theme';
 
 /** @typedef {{ type: 'product'|'custom', id: string, name: string, price: number, qty: number, emoji?: string, color?: string, material?: string, size?: string, stlName?: string, comment?: string, productColor?: string }} CartItem */
 
@@ -29,7 +31,33 @@ const state = {
 };
 
 const app = document.getElementById('app');
-const tg = initTelegram();
+
+function getTheme() {
+  const t = document.documentElement.getAttribute('data-theme');
+  return t === 'dark' ? 'dark' : 'light';
+}
+
+function setTheme(theme) {
+  const t = theme === 'dark' ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', t);
+  try {
+    localStorage.setItem(THEME_KEY, t);
+  } catch (_) {
+    /* ignore */
+  }
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', t === 'dark' ? '#0a0a0a' : '#f7f5f2');
+  applyTelegramChrome(t);
+}
+
+function toggleTheme() {
+  setTheme(getTheme() === 'dark' ? 'light' : 'dark');
+  haptic('light');
+}
+
+// Гарантируем data-theme + chrome до первого render
+setTheme(getTheme());
+const tg = initTelegram(getTheme());
 
 function loadCart() {
   try {
@@ -196,6 +224,9 @@ function header(title, { back, cart, brand } = {}) {
   const titleHtml = brand
     ? `<div class="brand">${brandMark()}<h1 class="brand-title">${title}</h1></div>`
     : `<h1>${title}</h1>`;
+  const theme = getTheme();
+  const themeIcon = theme === 'dark' ? '☀️' : '🌙';
+  const themeLabel = theme === 'dark' ? 'Светлая тема' : 'Тёмная тема';
   return `
     <header class="header">
       ${
@@ -204,6 +235,7 @@ function header(title, { back, cart, brand } = {}) {
           : `<span class="btn-icon" style="visibility:hidden">·</span>`
       }
       ${titleHtml}
+      <button class="btn-icon btn-theme" data-action="toggle-theme" aria-label="${themeLabel}" title="${themeLabel}">${themeIcon}</button>
       ${
         cart !== false
           ? `<button class="btn-icon" data-action="cart" aria-label="Корзина">
@@ -470,6 +502,13 @@ function bindEvents() {
         } else if (state.screen === 'success') {
           navigate('home');
         }
+        return;
+      }
+      if (action === 'toggle-theme') {
+        toggleTheme();
+        // обновить иконку в шапке без сброса формы — полный render ок
+        if (state.screen === 'custom') syncCustomFromDom();
+        render();
         return;
       }
       if (action === 'home') return navigate('home');
