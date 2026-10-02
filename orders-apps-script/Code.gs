@@ -4,14 +4,20 @@
  *   POST JSON { secret, action: "list", telegram_user_id }
  * GET ?key=&userId= — запасной вариант (редирект Google может съесть ?key=).
  *
+ * Пуш клиенту при смене статуса:
+ *   installable onEdit → onOrdersStatusEdit(e) на лист «Заказы», колонка «Статус».
+ *   Один раз: запустить installTrigger_() из редактора (или создать триггер вручную).
+ *   Клиент должен написать боту /start (иначе sendMessage по chat_id не дойдёт).
+ *
  * Script Properties (Проект → Настройки проекта → Свойства скрипта):
  *   BOT_TOKEN        — токен бота от @BotFather
- *   CHAT_ID          — ваш chat id (куда слать уведомления)
+ *   CHAT_ID          — ваш chat id (куда слать уведомления о новых заказах)
  *   WEBHOOK_SECRET   — общий секрет (в JSON body.secret / ?key= / X-Webhook-Secret)
  *
  * Деплой: Развернуть → Новое развёртывание → Веб-приложение
  *   Выполнять от имени: Меня
  *   У кого есть доступ: Все
+ *   Триггер onEdit — отдельно (не входит в web app deployment).
  *
  * См. также LK-ORDERS.md в корне репозитория.
  */
@@ -402,16 +408,30 @@ function buildTgMessage_(o) {
   return lines.join('\n');
 }
 
+/**
+ * Уведомление владельцу (CHAT_ID) о новом заказе.
+ */
 function sendTelegram_(text) {
-  var token = String(props_().getProperty('BOT_TOKEN') || '').trim();
   var chatId = String(props_().getProperty('CHAT_ID') || '').trim();
-  if (!token || !chatId) return false;
+  return sendTelegramTo_(chatId, text).ok;
+}
+
+/**
+ * sendMessage любому chat_id (числовой id или @username).
+ * @return {{ok:boolean, code:number, body:string}}
+ */
+function sendTelegramTo_(chatId, text) {
+  var token = String(props_().getProperty('BOT_TOKEN') || '').trim();
+  var id = String(chatId || '').trim();
+  if (!token || !id) {
+    return { ok: false, code: 0, body: 'missing_token_or_chat' };
+  }
   var url =
     'https://api.telegram.org/bot' +
     encodeURIComponent(token) +
     '/sendMessage';
   var payload = {
-    chat_id: chatId,
+    chat_id: id,
     text: text,
     disable_web_page_preview: true,
   };
@@ -422,7 +442,166 @@ function sendTelegram_(text) {
     muteHttpExceptions: true,
   });
   var code = res.getResponseCode();
-  return code >= 200 && code < 300;
+  var body = '';
+  try {
+    body = String(res.getContentText() || '');
+  } catch (err) {
+    body = '';
+  }
+  return { ok: code >= 200 && code < 300, code: code, body: body };
+}
+
+
+/* ——— пуш клиенту при смене статуса ——— */
+
+/**
+ * Один раз: выберите эту функцию в редакторе Apps Script → Выполнить.
+ * Создаёт installable onEdit (простой onEdit не может вызывать UrlFetchApp).
+ * Либо вручную: Триггеры → Добавить → onOrdersStatusEdit / При изменении / Таблица.
+ */
+function installTrigger_() {
+  var handlers = ScriptApp.getProjectTriggers();
+  for (var i = 0; i < handlers.length; i++) {
+    if (handlers[i].getHandlerFunction() === 'onOrdersStatusEdit') {
+      Logger.log('onOrdersStatusEdit trigger already exists');
+      return;
+    }
+  }
+  ScriptApp.newTrigger('onOrdersStatusEdit')
+    .forSpreadsheet(SpreadsheetApp.getActive())
+    .onEdit()
+    .create();
+  Logger.log('Created installable onEdit → onOrdersStatusEdit');
+}
+
+/**
+ * Installable onEdit: смена колонки «Статус» на листе «Заказы» → Telegram клиенту.
+ */
+function onOrdersStatusEdit(e) {
+  try {
+    notifyCustomerStatusChange_(e);
+  } catch (err) {
+    Logger.log(
+      'onOrdersStatusEdit error: ' +
+        String(err && err.message ? err.message : err)
+    );
+  }
+}
+
+function notifyCustomerStatusChange_(e) {
+  if (!e || !e.range) return;
+
+  var sheet = e.range.getSheet();
+  if (!sheet || sheet.getName() !== SHEET_NAME) return;
+
+  // Только правка в одной колонке «Статус» (одна или несколько строк)
+  if (e.range.getNumColumns() !== 1) return;
+
+  var map = headerIndexMap_(sheet);
+  var statusCol = map['Статус'];
+  if (statusCol == null) {
+    Logger.log('notifyCustomerStatusChange_: no Статус column');
+    return;
+  }
+
+  var col = e.range.getColumn(); // 1-based
+  if (col !== statusCol + 1) return;
+
+  var startRow = e.range.getRow();
+  var numRows = e.range.getNumRows();
+  var lastCol = Math.max(sheet.getLastColumn(), HEADERS.length);
+
+  for (var i = 0; i < numRows; i++) {
+    var row = startRow + i;
+    if (row < 2) continue; // заголовок
+
+    var newStatus = '';
+    var oldStatus = '';
+    if (numRows === 1 && e.value != null) {
+      newStatus = str_(e.value);
+      oldStatus = str_(e.oldValue != null ? e.oldValue : '');
+    } else {
+      newStatus = str_(sheet.getRange(row, col).getDisplayValue());
+      // oldValue для мульти-правки недоступен
+      oldStatus = '';
+    }
+    if (!newStatus) continue;
+    if (oldStatus && oldStatus === newStatus) continue;
+
+    pushStatusForRow_(sheet, map, row, lastCol, newStatus, oldStatus);
+  }
+}
+
+function pushStatusForRow_(sheet, map, row, lastCol, newStatus, oldStatus) {
+  var rowValues = sheet.getRange(row, 1, row, lastCol).getValues()[0];
+
+  var orderId = cell_(rowValues, map, 'order_id') || ('строка ' + row);
+  var telegramUserId = cell_(rowValues, map, 'telegram_user_id');
+  var username = cell_(rowValues, map, 'Username');
+
+  var text = buildStatusPushMessage_({
+    orderId: orderId,
+    status: newStatus,
+    oldStatus: oldStatus,
+  });
+
+  var target = resolveCustomerChatId_(telegramUserId, username);
+  if (!target) {
+    Logger.log(
+      'status push skip: no telegram_user_id/username for order ' + orderId
+    );
+    return;
+  }
+
+  var result = sendTelegramTo_(target, text);
+  if (!result.ok) {
+    Logger.log(
+      'status push failed order=' +
+        orderId +
+        ' chat=' +
+        target +
+        ' code=' +
+        result.code +
+        ' body=' +
+        result.body
+    );
+  } else {
+    Logger.log('status push ok order=' + orderId + ' chat=' + target);
+  }
+}
+
+/**
+ * Числовой telegram_user_id предпочтителен.
+ * Если его нет — пробуем @username (сработает только если username публичный
+ * и клиент уже писал боту; чаще всего нужен именно numeric id после /start).
+ */
+function resolveCustomerChatId_(telegramUserId, username) {
+  var uid = str_(telegramUserId);
+  if (uid && /^\d+$/.test(uid)) return uid;
+
+  var u = str_(username).replace(/^@/, '');
+  if (u) return '@' + u;
+
+  // Иногда в telegram_user_id ошибочно кладут @name
+  if (uid) {
+    var cleaned = uid.replace(/^@/, '');
+    if (cleaned) return /^\d+$/.test(cleaned) ? cleaned : '@' + cleaned;
+  }
+  return '';
+}
+
+function buildStatusPushMessage_(o) {
+  var lines = [];
+  lines.push('📦 Бубер 3D — статус заказа');
+  lines.push('');
+  lines.push('Заказ: ' + o.orderId);
+  lines.push('Новый статус: ' + o.status);
+  if (o.oldStatus) {
+    lines.push('(было: ' + o.oldStatus + ')');
+  }
+  lines.push('');
+  lines.push('Актуальный статус также в Mini App → «Мои заказы».');
+  return lines.join('\n');
 }
 
 function str_(v) {
