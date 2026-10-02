@@ -2,6 +2,7 @@
 
 const tg = typeof window !== 'undefined' ? window.Telegram?.WebApp : null;
 let mainButtonHandler = null;
+let backButtonHandler = null;
 
 const THEME_CHROME = {
   light: '#f7f5f2',
@@ -102,6 +103,34 @@ export function hideMainButton() {
   }
   mainButtonHandler = null;
   tg.MainButton.hide();
+}
+
+export function showBackButton(onClick) {
+  if (!tg?.BackButton) return false;
+  if (backButtonHandler && tg.BackButton.offClick) {
+    try {
+      tg.BackButton.offClick(backButtonHandler);
+    } catch (_) {
+      /* ignore */
+    }
+  }
+  backButtonHandler = onClick;
+  tg.BackButton.onClick(backButtonHandler);
+  tg.BackButton.show();
+  return true;
+}
+
+export function hideBackButton() {
+  if (!tg?.BackButton) return;
+  if (backButtonHandler && tg.BackButton.offClick) {
+    try {
+      tg.BackButton.offClick(backButtonHandler);
+    } catch (_) {
+      /* ignore */
+    }
+  }
+  backButtonHandler = null;
+  tg.BackButton.hide();
 }
 
 export function haptic(type = 'light') {

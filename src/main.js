@@ -5,6 +5,8 @@ import {
   getTelegram,
   showMainButton,
   hideMainButton,
+  showBackButton,
+  hideBackButton,
   haptic,
   getUser,
   applyTelegramChrome,
@@ -19,6 +21,8 @@ const ORDERS_KEY = 'tg3d_orders_v1';
 const state = {
   screen: 'home', // home | product | custom | cart | success
   productId: null,
+  // Previous logical routes for the in-app and Telegram back buttons.
+  history: [],
   cart: loadCart(),
   lastOrder: null,
   checkout: {
@@ -97,8 +101,31 @@ function formatRub(n) {
 }
 
 function navigate(screen, opts = {}) {
+  const currentRoute = { screen: state.screen, productId: state.productId };
+
+  if (opts.resetHistory || screen === 'home') {
+    state.history = [];
+  } else if (screen !== state.screen) {
+    state.history.push(currentRoute);
+  }
+
   state.screen = screen;
-  if (opts.productId) state.productId = opts.productId;
+  if (screen === 'home') state.productId = null;
+  if (opts.productId !== undefined) state.productId = opts.productId;
+  haptic('light');
+  render();
+}
+
+function goBack() {
+  const previous = state.history.pop();
+  if (previous) {
+    state.screen = previous.screen;
+    state.productId = previous.productId ?? null;
+  } else {
+    // The home screen is the safe fallback for a freshly opened deep link.
+    state.screen = 'home';
+    state.productId = null;
+  }
   haptic('light');
   render();
 }
@@ -343,7 +370,17 @@ function placeOrder() {
   saveCart();
   state.checkout.error = '';
   haptic('heavy');
-  navigate('success');
+  navigate('success', { resetHistory: true });
+}
+
+function updateBackButton() {
+  const onNonHomeScreen = state.screen !== 'home';
+  const handler = () => goBack();
+  if (onNonHomeScreen) {
+    showBackButton(handler);
+  } else {
+    hideBackButton();
+  }
 }
 
 function updateMainButton() {
@@ -432,7 +469,7 @@ function renderProduct() {
   const p = PRODUCTS.find((x) => x.id === state.productId);
   if (!p) return renderHome();
   return `
-    ${header(p.name)}
+    ${header(p.name, { back: true })}
     <div class="screen">
       <div class="detail-img" style="background:${p.color}44">${p.emoji}</div>
       <div class="detail-price">${formatRub(p.price)}</div>
@@ -468,7 +505,7 @@ function renderCustom() {
   const estimate = estimateCustomPrice(c);
 
   return `
-    ${header('Свой вариант')}
+    ${header('Свой вариант', { back: true })}
     <div class="screen">
       <p style="color:var(--tg-hint);font-size:0.9rem;margin-bottom:16px">
         Опишите заказ. Оценка цены ориентировочная — уточним после просмотра STL.
@@ -525,7 +562,7 @@ function renderCustom() {
 function renderCart() {
   if (!state.cart.length) {
     return `
-      ${header('Корзина')}
+      ${header('Корзина', { back: true })}
       <div class="screen">
         <div class="cart-empty">
           <div class="emoji">🛒</div>
@@ -579,7 +616,7 @@ function renderCart() {
     : '<div id="co-error"></div>';
 
   return `
-    ${header('Корзина')}
+    ${header('Корзина', { back: true })}
     <div class="screen">
       ${items}
       <div class="cart-total">
@@ -648,7 +685,7 @@ function renderSuccess() {
        <button class="btn btn-primary" data-action="copy-order">Скопировать заказ</button>`;
 
   return `
-    ${header('Готово', { cart: false })}
+    ${header('Готово', { back: true, cart: false })}
     <div class="screen">
       <div class="success">
         <div class="emoji">✅</div>
@@ -698,6 +735,7 @@ function render() {
 
   app.innerHTML = html;
   bindEvents();
+  updateBackButton();
   updateMainButton();
 }
 
@@ -717,11 +755,7 @@ function bindEvents() {
       const id = el.getAttribute('data-id');
 
       if (action === 'back') {
-        if (state.screen === 'product' || state.screen === 'custom' || state.screen === 'cart') {
-          navigate('home');
-        } else if (state.screen === 'success') {
-          navigate('home');
-        }
+        goBack();
         return;
       }
       if (action === 'toggle-theme') {

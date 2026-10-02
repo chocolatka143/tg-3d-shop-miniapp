@@ -164,6 +164,18 @@ body {
   position: relative;
 }
 
+.btn-icon[data-action='back'] {
+  border: 1px solid color-mix(in srgb, var(--brand-orange) 48%, transparent);
+  color: var(--brand-orange);
+  font-size: 1.5rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.btn-icon[data-action='back']:active {
+  background: color-mix(in srgb, var(--brand-orange) 14%, var(--tg-secondary-bg));
+}
+
 .btn-icon .badge {
   position: absolute;
   top: -4px;
