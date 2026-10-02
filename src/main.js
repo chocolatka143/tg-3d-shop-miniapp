@@ -27,6 +27,13 @@ const state = {
   history: [],
   cart: loadCart(),
   lastOrder: null,
+  orders: {
+    loading: false,
+    loaded: false,
+    remote: null,
+    error: '',
+    source: '', // remote | local | ''
+  },
   luck: {
     spinning: false,
     hasSpun: false,
@@ -325,6 +332,153 @@ function makeOrderId() {
 
 function statusLabel(status) {
   return status || 'Новый';
+}
+
+const STATUS_SLUGS = {
+  Новый: 'new',
+  Подтверждён: 'confirmed',
+  'В печати': 'printing',
+  Готов: 'ready',
+  Выдан: 'done',
+  Отменён: 'cancelled',
+};
+
+function statusSlug(status) {
+  const label = statusLabel(status);
+  return STATUS_SLUGS[label] || 'new';
+}
+
+function statusBadge(status) {
+  const label = statusLabel(status);
+  return `<span class="order-status order-status--${statusSlug(label)}">${escapeHtml(label)}</span>`;
+}
+
+function normalizeRemoteOrder(o) {
+  const itemsRaw = o.items;
+  let items = [];
+  let itemsHint = '';
+  if (Array.isArray(itemsRaw)) {
+    items = itemsRaw;
+    itemsHint = items
+      .slice(0, 2)
+      .map((i) => (typeof i === 'string' ? i : i.name))
+      .filter(Boolean)
+      .join(', ');
+    if (items.length > 2) itemsHint += '…';
+  } else if (typeof itemsRaw === 'string' && itemsRaw.trim()) {
+    itemsHint = itemsRaw.trim().split('\n')[0];
+    if (itemsRaw.includes('\n')) itemsHint += '…';
+  }
+  return {
+    id: o.order_id || o.id || '—',
+    status: statusLabel(o.status),
+    createdAt: o.createdAt || null,
+    date: o.date || '',
+    totalRub: o.total != null ? o.total : o.totalRub,
+    items,
+    itemsHint: itemsHint || '—',
+    payment: o.payment || '',
+    comment: o.comment || '',
+    source: 'remote',
+  };
+}
+
+function normalizeLocalOrder(o) {
+  const itemsCount = Array.isArray(o.items) ? o.items.length : 0;
+  const itemsHint = itemsCount
+    ? o.items
+        .slice(0, 2)
+        .map((i) => i.name)
+        .filter(Boolean)
+        .join(', ') + (itemsCount > 2 ? '…' : '')
+    : '—';
+  return {
+    id: o.id || '—',
+    status: statusLabel(o.status),
+    createdAt: o.createdAt || null,
+    date: '',
+    totalRub: o.totalRub != null ? o.totalRub : o.total,
+    items: Array.isArray(o.items) ? o.items : [],
+    itemsHint,
+    payment: o.checkout?.payment || o.payment || '',
+    comment: o.checkout?.comment || o.comment || '',
+    source: 'local',
+  };
+}
+
+async function fetchOrdersList() {
+  const base = (SHOP.orderWebhookUrl || '').trim();
+  const secret = (SHOP.orderWebhookSecret || '').trim();
+  if (!base) return { ok: false, skipped: true, error: 'no_webhook' };
+  if (!secret) return { ok: false, skipped: true, error: 'no_secret' };
+
+  const userId = getUser()?.id;
+  if (!userId) return { ok: false, error: 'no_user' };
+
+  // Secret только в теле — Google redirect часто съедает ?key=
+  const res = await fetch(base, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({
+      secret,
+      action: 'list',
+      telegram_user_id: userId,
+    }),
+  });
+  let data = null;
+  try {
+    data = await res.json();
+  } catch (_) {
+    /* ignore */
+  }
+  if (!res.ok || !data || data.ok !== true) {
+    const msg = (data && data.error) || `http_${res.status}`;
+    throw new Error(msg);
+  }
+  const orders = Array.isArray(data.orders) ? data.orders.map(normalizeRemoteOrder) : [];
+  return { ok: true, orders };
+}
+
+async function loadRemoteOrders(force = false) {
+  if (state.orders.loading) return;
+  if (state.orders.loaded && !force) return;
+
+  const hasWebhook = !!(SHOP.orderWebhookUrl || '').trim();
+  if (!hasWebhook) {
+    state.orders.loading = false;
+    state.orders.loaded = true;
+    state.orders.remote = null;
+    state.orders.error = '';
+    state.orders.source = 'local';
+    if (state.screen === 'orders') render();
+    return;
+  }
+
+  state.orders.loading = true;
+  state.orders.error = '';
+  if (state.screen === 'orders') render();
+
+  try {
+    const result = await fetchOrdersList();
+    if (result.skipped) {
+      state.orders.remote = null;
+      state.orders.source = 'local';
+      state.orders.error = '';
+    } else {
+      state.orders.remote = result.orders;
+      state.orders.source = 'remote';
+      state.orders.error = '';
+    }
+  } catch (err) {
+    console.warn('Orders list failed, fallback to localStorage', err);
+    state.orders.remote = null;
+    state.orders.source = 'local';
+    state.orders.error = String(err && err.message ? err.message : err);
+  } finally {
+    state.orders.loading = false;
+    state.orders.loaded = true;
+    if (state.screen === 'orders') render();
+  }
 }
 
 function pickLuckSegment() {
@@ -964,44 +1118,79 @@ function renderCart() {
 }
 
 
-function renderOrders() {
-  const local = loadLocalOrders();
-  const hasWebhook = !!(SHOP.orderWebhookUrl || '').trim();
-
-  let body;
-  if (local.length) {
-    const cards = local
-      .map((o) => {
-        const id = o.id || '—';
-        const status = statusLabel(o.status);
-        const when = o.createdAt
-          ? new Date(o.createdAt).toLocaleString('ru-RU')
-          : '—';
-        const total =
-          o.totalRub != null ? formatRub(o.totalRub) : o.total != null ? formatRub(o.total) : '—';
-        const itemsCount = Array.isArray(o.items) ? o.items.length : 0;
-        const itemsHint = itemsCount
-          ? o.items
-              .slice(0, 2)
-              .map((i) => i.name)
-              .filter(Boolean)
-              .join(', ') + (itemsCount > 2 ? '…' : '')
-          : '—';
-        return `
+function orderCardHtml(o) {
+  const when = o.date
+    ? o.date
+    : o.createdAt
+      ? new Date(o.createdAt).toLocaleString('ru-RU')
+      : '—';
+  const total = o.totalRub != null && o.totalRub !== '' ? formatRub(o.totalRub) : '—';
+  return `
       <article class="order-card">
         <div class="order-card-top">
-          <strong class="order-id">${escapeHtml(id)}</strong>
-          <span class="order-status">${escapeHtml(status)}</span>
+          <strong class="order-id">${escapeHtml(o.id)}</strong>
+          ${statusBadge(o.status)}
         </div>
         <div class="order-meta">${escapeHtml(when)}</div>
-        <div class="order-items">${escapeHtml(itemsHint)}</div>
+        <div class="order-items">${escapeHtml(o.itemsHint || '—')}</div>
         <div class="order-total">${escapeHtml(total)}</div>
       </article>`;
-      })
-      .join('');
+}
+
+function renderOrders() {
+  const hasWebhook = !!(SHOP.orderWebhookUrl || '').trim();
+  const { loading, loaded, remote, error, source } = state.orders;
+  const local = loadLocalOrders().map(normalizeLocalOrder);
+
+  let lead = '';
+  let list = [];
+  let body;
+
+  if (loading && !loaded) {
     body = `
-      <p class="tab-lead">Заказы с этого устройства. Статусы с таблицы появятся после подключения webhook.</p>
-      <div class="orders-list">${cards}</div>`;
+      <p class="tab-lead">Загружаем заказы…</p>
+      <div class="placeholder-panel orders-loading">
+        <div class="emoji">⏳</div>
+        <h3>Мои заказы</h3>
+        <p>Синхронизация со статусами из таблицы</p>
+      </div>`;
+  } else if (source === 'remote' && Array.isArray(remote)) {
+    list = remote;
+    lead = list.length
+      ? 'Статусы из таблицы. Исполнитель меняет колонку «Статус» — обновите список.'
+      : '';
+    if (list.length) {
+      body = `
+      <p class="tab-lead">${escapeHtml(lead)}</p>
+      <div class="orders-toolbar">
+        <button class="btn btn-secondary btn-refresh-orders" data-action="refresh-orders" ${loading ? 'disabled' : ''}>${loading ? 'Обновление…' : 'Обновить статусы'}</button>
+      </div>
+      <div class="orders-list">${list.map(orderCardHtml).join('')}</div>`;
+    } else {
+      body = `
+      <div class="orders-toolbar">
+        <button class="btn btn-secondary btn-refresh-orders" data-action="refresh-orders" ${loading ? 'disabled' : ''}>${loading ? 'Обновление…' : 'Обновить статусы'}</button>
+      </div>
+      <div class="placeholder-panel">
+        <div class="emoji">📋</div>
+        <h3>Пока нет заказов</h3>
+        <p>Оформите заказ в корзине — он появится здесь со статусом из таблицы.</p>
+        <button class="btn btn-primary" data-action="home">В каталог</button>
+      </div>`;
+    }
+  } else if (local.length) {
+    list = local;
+    lead = hasWebhook
+      ? (error
+          ? `Не удалось загрузить статусы (${error}). Показаны заказы с этого устройства.`
+          : 'Показаны заказы с этого устройства (офлайн).')
+      : 'Заказы с этого устройства. Подключите таблицу, чтобы видеть актуальные статусы.';
+    body = `
+      <p class="tab-lead">${escapeHtml(lead)}</p>
+      ${hasWebhook ? `<div class="orders-toolbar">
+        <button class="btn btn-secondary btn-refresh-orders" data-action="refresh-orders" ${loading ? 'disabled' : ''}>${loading ? 'Обновление…' : 'Обновить статусы'}</button>
+      </div>` : ''}
+      <div class="orders-list">${list.map(orderCardHtml).join('')}</div>`;
   } else if (!hasWebhook) {
     body = `
       <div class="placeholder-panel">
@@ -1013,10 +1202,13 @@ function renderOrders() {
       </div>`;
   } else {
     body = `
+      <div class="orders-toolbar">
+        <button class="btn btn-secondary btn-refresh-orders" data-action="refresh-orders" ${loading ? 'disabled' : ''}>${loading ? 'Обновление…' : 'Обновить статусы'}</button>
+      </div>
       <div class="placeholder-panel">
         <div class="emoji">📋</div>
         <h3>Пока нет заказов</h3>
-        <p>Оформите заказ в корзине — он появится здесь. Синхронизация статусов с таблицей — следующий шаг.</p>
+        <p>${error ? escapeHtml(`Не удалось загрузить список (${error}). `) : ''}Оформите заказ в корзине — он появится здесь.</p>
         <button class="btn btn-primary" data-action="home">В каталог</button>
       </div>`;
   }
@@ -1093,6 +1285,9 @@ function render() {
       break;
     case 'orders':
       html = renderOrders();
+      if (!state.orders.loaded && !state.orders.loading) {
+        queueMicrotask(() => loadRemoteOrders());
+      }
       break;
     default:
       html = renderHome();
@@ -1149,7 +1344,16 @@ function bindEvents() {
         return;
       }
       if (action === 'cart') return navigate('cart');
-      if (action === 'orders') return navigate('orders');
+      if (action === 'orders') {
+        navigate('orders');
+        loadRemoteOrders();
+        return;
+      }
+      if (action === 'refresh-orders') {
+        haptic('light');
+        loadRemoteOrders(true);
+        return;
+      }
       if (action === 'custom') return navigate('custom');
       if (action === 'open-product') return navigate('product', { productId: id });
       if (action === 'add-product') {

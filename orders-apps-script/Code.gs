@@ -1,11 +1,13 @@
 /**
  * Бубер 3D — приём заказов в Google Таблицу + уведомление в Telegram.
- * Список заказов пользователя для ЛК: GET ?key=&userId=
+ * Список заказов для ЛК (предпочтительно):
+ *   POST JSON { secret, action: "list", telegram_user_id }
+ * GET ?key=&userId= — запасной вариант (редирект Google может съесть ?key=).
  *
  * Script Properties (Проект → Настройки проекта → Свойства скрипта):
  *   BOT_TOKEN        — токен бота от @BotFather
  *   CHAT_ID          — ваш chat id (куда слать уведомления)
- *   WEBHOOK_SECRET   — общий секрет (заголовок X-Webhook-Secret или ?key=)
+ *   WEBHOOK_SECRET   — общий секрет (в JSON body.secret / ?key= / X-Webhook-Secret)
  *
  * Деплой: Развернуть → Новое развёртывание → Веб-приложение
  *   Выполнять от имени: Меня
@@ -86,6 +88,31 @@ function doPost(e) {
     var body = parseBody_(e);
     if (!body || typeof body !== 'object') {
       return json_({ ok: false, error: 'invalid_json' });
+    }
+
+    var action = str_(body.action || '').toLowerCase();
+    if (action === 'list') {
+      var listUid = str_(
+        body.telegram_user_id != null
+          ? body.telegram_user_id
+          : body.telegramUserId != null
+            ? body.telegramUserId
+            : body.userId != null
+              ? body.userId
+              : ''
+      );
+      if (!listUid) {
+        return json_({ ok: false, error: 'need_user_id' });
+      }
+      try {
+        var listed = listOrdersByUser_(listUid);
+        return json_({ ok: true, orders: listed });
+      } catch (listErr) {
+        return json_({
+          ok: false,
+          error: String(listErr && listErr.message ? listErr.message : listErr),
+        });
+      }
     }
 
     var name = str_(body.name);

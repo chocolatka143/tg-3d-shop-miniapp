@@ -1,7 +1,7 @@
 # Приём заказов: Google Таблица + Telegram
 
 Маленький скрипт Google Apps Script принимает JSON от Mini App, пишет строку на лист **«Заказы»** и шлёт вам сообщение в Telegram.  
-Для ЛК: **GET** с `userId` возвращает заказы этого Telegram-пользователя.
+Для ЛК: **POST** `{ secret, action: "list", telegram_user_id }` возвращает заказы пользователя (предпочтительно). GET `?key=&userId=` — запасной вариант.
 
 Секреты (`BOT_TOKEN`, `CHAT_ID`, `WEBHOOK_SECRET`) хранятся только в свойствах скрипта Google — **не коммитьте их в git**.
 
@@ -75,9 +75,10 @@ orderWebhookSecret: 'тот_же_WEBHOOK_SECRET',
 
 ```bash
 curl -sS -X POST \
-  'https://script.google.com/macros/s/XXXX/exec?key=ВАШ_СЕКРЕТ' \
+  'https://script.google.com/macros/s/XXXX/exec' \
   -H 'Content-Type: text/plain;charset=utf-8' \
   -d '{
+    "secret": "ВАШ_СЕКРЕТ",
     "order_id": "ord_test_001",
     "telegram_user_id": 123456789,
     "name": "Тест",
@@ -96,17 +97,30 @@ curl -sS -X POST \
 Ожидается JSON вроде `{"ok":true,"telegram":true,"order_id":"ord_test_001"}`.  
 В таблице появится строка со статусом **Новый**, в Telegram — сообщение о заказе.
 
-### GET — health / список для ЛК
+### POST — список для ЛК (предпочтительно)
 
 ```bash
-# Жив ли приёмник
-curl -sS 'https://script.google.com/macros/s/XXXX/exec?key=ВАШ_СЕКРЕТ'
-
-# Заказы пользователя (telegram_user_id)
-curl -sS 'https://script.google.com/macros/s/XXXX/exec?key=ВАШ_СЕКРЕТ&userId=123456789'
+curl -sS -X POST \
+  'https://script.google.com/macros/s/XXXX/exec' \
+  -H 'Content-Type: text/plain;charset=utf-8' \
+  -d '{
+    "secret": "ВАШ_СЕКРЕТ",
+    "action": "list",
+    "telegram_user_id": 123456789
+  }'
 ```
 
-Ответ списка: `{ "ok": true, "orders": [ { "order_id", "date", "status", … } ] }`.
+Ответ: `{ "ok": true, "orders": [ { "order_id", "date", "status", … } ] }`.
+
+### GET — health / запасной список
+
+```bash
+# Жив ли приёмник (ключ в query; на редиректе иногда теряется)
+curl -sS 'https://script.google.com/macros/s/XXXX/exec?key=ВАШ_СЕКРЕТ'
+
+# Заказы пользователя
+curl -sS 'https://script.google.com/macros/s/XXXX/exec?key=ВАШ_СЕКРЕТ&userId=123456789'
+```
 
 ## 7. Формат JSON от Mini App (POST)
 
@@ -123,7 +137,7 @@ curl -sS 'https://script.google.com/macros/s/XXXX/exec?key=ВАШ_СЕКРЕТ&u
 | `total` | number | Сумма (₽) |
 | `createdAt` | string ISO | Время создания |
 
-Авторизация: query `?key=WEBHOOK_SECRET` (предпочтительно для браузера) или заголовок `X-Webhook-Secret`.
+Авторизация: поле `secret` в JSON (предпочтительно), либо query `?key=`, либо заголовок `X-Webhook-Secret`.
 
 > **CORS:** браузерный `POST` с `Content-Type: application/json` часто упирается в preflight. Mini App шлёт тело как **`text/plain`** с JSON-строкой — так запрос «простой» и доходит до Apps Script без OPTIONS. В `Code.gs` есть `doOptions` на всякий случай.
 
