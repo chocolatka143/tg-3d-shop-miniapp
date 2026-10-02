@@ -32,6 +32,7 @@ const state = {
     payment: 'sbp',
     comment: '',
     error: '',
+    submitting: false,
   },
   custom: {
     material: MATERIALS[0],
@@ -326,7 +327,50 @@ async function copyText(text) {
   }
 }
 
-function placeOrder() {
+async function sendOrderWebhook(order) {
+  const base = (SHOP.orderWebhookUrl || '').trim();
+  if (!base) return { sent: false, skipped: true };
+
+  const secret = (SHOP.orderWebhookSecret || '').trim();
+  let url = base;
+  if (secret) {
+    const sep = base.includes('?') ? '&' : '?';
+    url = `${base}${sep}key=${encodeURIComponent(secret)}`;
+  }
+
+  const username = (order.checkout.telegram || '').replace(/^@/, '').trim();
+  const payload = {
+    name: order.checkout.name || '',
+    phone: order.checkout.phone || '',
+    username,
+    payment: order.checkout.payment || 'sbp',
+    comment: order.checkout.comment || '',
+    items: order.items,
+    total: order.totalRub,
+    createdAt: order.createdAt,
+  };
+
+  // text/plain — простой запрос без CORS preflight к Apps Script
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(payload),
+  });
+  let data = null;
+  try {
+    data = await res.json();
+  } catch (_) {
+    /* ignore */
+  }
+  if (!res.ok || !data || data.ok !== true) {
+    const msg = (data && data.error) || `http_${res.status}`;
+    throw new Error(msg);
+  }
+  return { sent: true, telegram: !!data.telegram };
+}
+
+async function placeOrder() {
+  if (state.checkout.submitting) return;
   if (!state.cart.length) return;
   if (!validateCheckout()) {
     haptic('light');
@@ -361,13 +405,28 @@ function placeOrder() {
     totalRub: cartTotal(),
     note:
       'Заказ без онлайн-оплаты. Свяжемся для подтверждения. СБП — реквизиты в чат; наличные — при встрече.',
+    webhookOk: false,
   };
   order.text = formatOrderText(order);
+
+  state.checkout.submitting = true;
+  state.checkout.error = '';
+  render();
+
+  try {
+    const result = await sendOrderWebhook(order);
+    order.webhookOk = !!result.sent;
+  } catch (err) {
+    console.warn('Order webhook failed, fallback to copy/Telegram', err);
+    order.webhookOk = false;
+  }
+
   state.lastOrder = order;
   saveOrderLocal(order);
   console.log('ORDER JSON:', JSON.stringify(order, null, 2));
   state.cart = [];
   saveCart();
+  state.checkout.submitting = false;
   state.checkout.error = '';
   haptic('heavy');
   navigate('success', { resetHistory: true });
@@ -388,7 +447,9 @@ function updateMainButton() {
   const bar = document.getElementById('bottom-bar');
 
   if (onCheckoutScreens) {
-    const text = `Оформить заказ · ${formatRub(cartTotal())}`;
+    const text = state.checkout.submitting
+      ? 'Отправка…'
+      : `Оформить заказ · ${formatRub(cartTotal())}`;
     const usedTg = showMainButton(text, () => placeOrder());
     if (bar) bar.classList.toggle('hidden', !!usedTg);
   } else {
@@ -661,7 +722,9 @@ function renderCart() {
 
         ${errHtml}
 
-        <button class="btn btn-primary" data-action="checkout">Оформить заказ · ${formatRub(cartTotal())}</button>
+        <button class="btn btn-primary" data-action="checkout" ${state.checkout.submitting ? 'disabled' : ''}>${
+          state.checkout.submitting ? 'Отправка…' : `Оформить заказ · ${formatRub(cartTotal())}`
+        }</button>
         <button class="btn btn-secondary" data-action="home">Продолжить покупки</button>
       </section>
     </div>
@@ -690,7 +753,13 @@ function renderSuccess() {
       <div class="success">
         <div class="emoji">✅</div>
         <h2>Заказ оформлен</h2>
-        <p>Мы свяжемся с вами для подтверждения. ${escapeHtml(payHint)}</p>
+        <p>${
+          order?.webhookOk
+            ? 'Заказ отправлен. Мы свяжемся с вами для подтверждения. '
+            : (SHOP.orderWebhookUrl || '').trim()
+              ? 'Не удалось отправить автоматически — скопируйте заказ или напишите нам в Telegram. '
+              : 'Мы свяжемся с вами для подтверждения. '
+        }${escapeHtml(payHint)}</p>
         <div class="order-summary" id="order-summary">${escapeHtml(text)}</div>
         <p class="copy-status" id="copy-status" hidden></p>
         ${contactBlock}

@@ -73,6 +73,10 @@ export const SHOP = {
   city: 'Москва',
   telegramUsername: 'bubershop3d',
   sbpHint: 'Реквизиты СБП пришлём в чат после подтверждения заказа',
+  /** URL веб-приложения Apps Script (.../exec). Пусто = без таблицы, только копирование + Telegram */
+  orderWebhookUrl: '',
+  /** Тот же WEBHOOK_SECRET, что в свойствах скрипта. Не коммитьте реальный секрет */
+  orderWebhookSecret: '',
 };
 
 export const PAYMENT_METHODS = [
