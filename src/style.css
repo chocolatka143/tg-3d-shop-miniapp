@@ -1298,6 +1298,13 @@ html[data-theme='dark'] .wheel-pointer {
   opacity: 0.72;
 }
 
+.luck-cooldown {
+  margin: 10px 0 0;
+  color: var(--tg-hint);
+  font-size: 0.86rem;
+  text-align: center;
+}
+
 .luck-result {
   display: flex;
   flex-direction: column;

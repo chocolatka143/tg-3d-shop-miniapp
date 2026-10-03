@@ -18,6 +18,8 @@ const THEME_KEY = 'buber-theme';
 const ORDERS_KEY = 'tg3d_orders_v1';
 const PROMO_KEY = 'tg3d_promo_v1';
 const PROMO_USED_KEY = 'tg3d_promo_used_v1';
+const LUCK_SPIN_DATE_KEY = 'tg3d_luck_spin_date_v1';
+const LUCK_DEVICE_KEY = 'tg3d_luck_device_v1';
 const REUSABLE_PROMO_CODES = new Set(['LATEST5']);
 const LUCK_SPIN_DURATION_MS = 3400;
 
@@ -780,8 +782,79 @@ function mod(value, divisor) {
   return ((value % divisor) + divisor) % divisor;
 }
 
+function localDeviceKey() {
+  try {
+    const existing = localStorage.getItem(LUCK_DEVICE_KEY);
+    if (existing) return existing;
+
+    const generated = globalThis.crypto?.randomUUID?.()
+      || `device_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+    localStorage.setItem(LUCK_DEVICE_KEY, generated);
+    return generated;
+  } catch (_) {
+    // Если localStorage недоступен, блокировка всё равно действует в текущем сеансе.
+    return 'session-device';
+  }
+}
+
+function luckIdentity() {
+  const user = getUser();
+  return user?.id != null ? `telegram-${String(user.id)}` : `device-${localDeviceKey()}`;
+}
+
+function moscowCalendarDate(date = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Europe/Moscow',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function luckSpinStorageKey() {
+  return `${LUCK_SPIN_DATE_KEY}:${luckIdentity()}`;
+}
+
+function readLuckSpinDate() {
+  try {
+    return { available: true, date: localStorage.getItem(luckSpinStorageKey()) };
+  } catch (_) {
+    return { available: false, date: null };
+  }
+}
+
+function hasSpunLuckToday() {
+  return readLuckSpinDate().date === moscowCalendarDate();
+}
+
+function refreshLuckAvailability() {
+  const stored = readLuckSpinDate();
+  if (state.luck.hasSpun && !state.luck.spinning && stored.available && stored.date !== moscowCalendarDate()) {
+    state.luck.hasSpun = false;
+    state.luck.result = null;
+    state.luck.promo = null;
+  }
+}
+
+function markLuckSpunToday() {
+  try {
+    localStorage.setItem(luckSpinStorageKey(), moscowCalendarDate());
+  } catch (_) {
+    /* ignore — state still blocks another spin in this session */
+  }
+}
+
 function spinLuckWheel() {
   if (state.luck.spinning || state.luck.hasSpun || !LUCK_SEGMENTS.length) return;
+
+  // Re-read storage in case another Mini App tab/session used today's attempt.
+  if (hasSpunLuckToday()) {
+    state.luck.hasSpun = true;
+    render();
+    return;
+  }
 
   const selected = pickLuckSegment();
   const selectedIndex = LUCK_SEGMENTS.findIndex((segment) => segment.id === selected.id);
@@ -792,6 +865,7 @@ function spinLuckWheel() {
 
   state.luck.spinning = true;
   state.luck.hasSpun = true;
+  markLuckSpunToday();
   state.luck.result = null;
   state.luck.rotation += turns * 360 + extraOffset;
   haptic('medium');
@@ -838,6 +912,7 @@ function luckWheelStyle() {
 }
 
 function renderLuckWheel() {
+  refreshLuckAvailability();
   const slice = 360 / LUCK_SEGMENTS.length;
   const labels = LUCK_SEGMENTS.map((segment, index) => {
     const angle = (index * slice) * (Math.PI / 180);
@@ -899,8 +974,12 @@ function renderLuckWheel() {
   const buttonLabel = state.luck.spinning
     ? 'Колесо крутится…'
     : state.luck.hasSpun
-      ? 'Попытка использована'
+      ? 'Уже крутили сегодня'
       : 'Крутить колесо';
+
+  const cooldownMessage = state.luck.hasSpun && !state.luck.spinning
+    ? '<p class="luck-cooldown" role="status">Уже крутили сегодня. Следующая попытка завтра.</p>'
+    : '';
 
   return `
     <section class="luck-panel" aria-labelledby="luck-title">
@@ -919,8 +998,9 @@ function renderLuckWheel() {
       <button class="btn btn-primary luck-spin" data-action="spin-luck" ${state.luck.spinning || state.luck.hasSpun ? 'disabled' : ''}>
         ${buttonLabel}
       </button>
+      ${cooldownMessage}
       ${result}
-      <p class="luck-note">Одна попытка за сеанс. Выигранный промокод сохраняется на устройстве и вводится в корзине.</p>
+      <p class="luck-note">Одна попытка в календарный день по Москве для пользователя Telegram или этого устройства. Выигранный промокод сохраняется на устройстве и вводится в корзине.</p>
     </section>`;
 }
 
@@ -1962,6 +2042,7 @@ function bindEvents() {
 // Boot
 prefillCheckoutFromTg();
 hydratePromoFromStorage();
+state.luck.hasSpun = hasSpunLuckToday();
 render();
 
 if (tg) {
