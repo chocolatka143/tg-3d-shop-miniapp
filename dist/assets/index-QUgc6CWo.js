@@ -220,26 +220,32 @@
         <span class="pay-option-title">${Z(e.label)}</span>
         <span class="pay-option-hint">${Z(e.hint)}</span>
       </span>
-    </label>`).join(``),r=t.payment===`sbp`?`<p class="checkout-note">${Z(u.sbpHint)}</p>`:`<p class="checkout-note">Оплата наличными при встрече или самовывозе в ${Z(u.city)}.</p>`,i=t.error?`<p class="form-error" id="co-error">${Z(t.error)}</p>`:`<div id="co-error"></div>`;z();let a=L(),o=t.promoError?`<p class="form-error promo-error">${Z(t.promoError)}</p>`:``,s=t.promoApplied?`<p class="promo-applied">✓ ${Z(t.promoApplied.label||t.promoApplied.code)}
+    </label>`).join(``),r=t.payment===`sbp`?`<div class="sbp-payment">
+          <p class="sbp-payment-title">Оплата по СБП</p>
+          <p class="sbp-recipient"><span>Получатель</span> Миронова Мария Геннадьевна</p>
+          <a class="btn btn-primary sbp-pay-btn" data-action="open-sbp" href="https://www.tbank-online.com/rm/r_ljmtSjOfvP.AvVhabUyZQ/dn0Mj26413" target="_blank" rel="noopener noreferrer">Оплатить по СБП</a>
+          <img class="sbp-qr" src="/assets/sbp-qr.jpg" alt="QR-код для оплаты по СБП" loading="lazy" width="640" height="640" />
+          <p class="sbp-receipt-note">После оплаты пришлём чек самозанятого</p>
+        </div>`:``,i=t.payment===`sbp`?`<p class="checkout-note">${Z(u.sbpHint)}</p>`:`<p class="checkout-note">Оплата наличными при встрече или самовывозе в ${Z(u.city)}.</p>`,a=t.error?`<p class="form-error" id="co-error">${Z(t.error)}</p>`:`<div id="co-error"></div>`;z();let o=L(),s=t.promoError?`<p class="form-error promo-error">${Z(t.promoError)}</p>`:``,c=t.promoApplied?`<p class="promo-applied">✓ ${Z(t.promoApplied.label||t.promoApplied.code)}
         <button type="button" class="link-btn" data-action="clear-promo">Сбросить</button>
-       </p>`:``,c=a.deliveryNote?`<p class="field-hint promo-delivery-note">${Z(a.deliveryNote)}</p>`:``,l=``;return l=a.discountTotal>0||a.deliveryFee>0||t.promoApplied?`<div class="cart-totals">
-      <div class="cart-total-row"><span>Товары</span><span>${k(a.subtotal)}</span></div>
-      ${a.deliveryFee>0?`<div class="cart-total-row"><span>Доставка</span><span>${k(a.deliveryFee)}</span></div>`:``}
-      ${a.orderDiscount>0?`<div class="cart-total-row discount"><span>Скидка на заказ</span><span>−${k(a.orderDiscount)}</span></div>`:``}
-      ${a.deliveryDiscount>0?`<div class="cart-total-row discount"><span>Скидка на доставку</span><span>−${k(a.deliveryDiscount)}</span></div>`:``}
+       </p>`:``,l=o.deliveryNote?`<p class="field-hint promo-delivery-note">${Z(o.deliveryNote)}</p>`:``,f=``;return f=o.discountTotal>0||o.deliveryFee>0||t.promoApplied?`<div class="cart-totals">
+      <div class="cart-total-row"><span>Товары</span><span>${k(o.subtotal)}</span></div>
+      ${o.deliveryFee>0?`<div class="cart-total-row"><span>Доставка</span><span>${k(o.deliveryFee)}</span></div>`:``}
+      ${o.orderDiscount>0?`<div class="cart-total-row discount"><span>Скидка на заказ</span><span>−${k(o.orderDiscount)}</span></div>`:``}
+      ${o.deliveryDiscount>0?`<div class="cart-total-row discount"><span>Скидка на доставку</span><span>−${k(o.deliveryDiscount)}</span></div>`:``}
       <div class="cart-total">
         <span>Итого</span>
-        <span class="sum">${k(a.total)}</span>
+        <span class="sum">${k(o.total)}</span>
       </div>
     </div>`:`<div class="cart-total">
       <span>Итого</span>
-      <span class="sum">${k(a.total)}</span>
+      <span class="sum">${k(o.total)}</span>
     </div>`,`
     ${Y(`Корзина`,{back:!0})}
     <div class="screen">
       ${e}
+      ${f}
       ${l}
-      ${c}
 
       <section class="checkout-block">
         <h3 class="section-title">Оформление</h3>
@@ -271,8 +277,8 @@
             <input type="text" id="co-promo" autocomplete="off" placeholder="Например BUBER5" value="${Z(t.promoInput)}" ${t.promoApplied?`readonly`:``} />
             ${t.promoApplied?`<button type="button" class="btn btn-secondary" data-action="clear-promo">Сброс</button>`:`<button type="button" class="btn btn-secondary" data-action="apply-promo">Применить</button>`}
           </div>
+          ${c}
           ${s}
-          ${o}
           <p class="field-hint">Код с колеса удачи или статичный (BUBER5 / BUBER7 / LATEST5 / DOST5 / DOST7). Все, кроме LATEST5, одноразовые на устройстве.</p>
         </div>
 
@@ -280,6 +286,7 @@
           <label>Способ оплаты</label>
           <div class="pay-list">${n}</div>
         </div>
+        ${i}
         ${r}
 
         <div class="form-group">
@@ -287,9 +294,9 @@
           <textarea id="co-comment" placeholder="Район, метро, удобное время, самовывоз…">${Z(t.comment)}</textarea>
         </div>
 
-        ${i}
+        ${a}
 
-        <button class="btn btn-primary" data-action="checkout" ${C.checkout.submitting?`disabled`:``}>${C.checkout.submitting?`Отправка…`:`Оформить заказ · ${k(a.total)}`}</button>
+        <button class="btn btn-primary" data-action="checkout" ${C.checkout.submitting?`disabled`:``}>${C.checkout.submitting?`Отправка…`:`Оформить заказ · ${k(o.total)}`}</button>
         <button class="btn btn-secondary" data-action="home">Продолжить покупки</button>
       </section>
     </div>
@@ -368,4 +375,4 @@
     <div id="bottom-bar" class="bottom-bar hidden">
       <button class="btn btn-primary" data-action="checkout">Оформить заказ</button>
     </div>
-  `,ce.innerHTML=e,at(),Ke(),qe()}function $(){let e=document.getElementById(`f-material`),t=document.getElementById(`f-size`),n=document.getElementById(`f-comment`);e&&(C.custom.material=e.value),t&&(C.custom.size=t.value),n&&(C.custom.comment=n.value)}function at(){ce.querySelectorAll(`[data-action]`).forEach(t=>{t.addEventListener(`click`,n=>{let r=t.getAttribute(`data-action`),i=t.getAttribute(`data-id`);if(r===`back`){V();return}if(r===`toggle-theme`){le(),C.screen===`custom`&&$(),C.screen===`cart`&&W(),Q();return}if(r===`home`)return B(`home`);if(r===`home-tab`){C.homeTab=i||`all`,_(`light`),Q();return}if(r===`spin-luck`){Be();return}if(r===`cart`)return B(`cart`);if(r===`orders`){B(`orders`),J();return}if(r===`refresh-orders`){_(`light`),J(!0);return}if(r===`custom`)return B(`custom`);if(r===`open-product`)return B(`product`,{productId:i});if(r===`add-product`){let t=e.find(e=>e.id===i);t&&(xe(t,1),B(`cart`));return}if(r===`pick-color`){$(),C.custom.colorId=i,Q();return}if(r===`qty-minus`){$(),C.custom.qty=Math.max(1,C.custom.qty-1),Q();return}if(r===`qty-plus`){$(),C.custom.qty=Math.min(99,C.custom.qty+1),Q();return}if(r===`add-custom`){$(),Se(),B(`cart`);return}if(r===`remove`){Ce(i);return}if(r===`pick-payment`){W(),C.checkout.payment=t.getAttribute(`value`)||C.checkout.payment,C.checkout.error=``,Q();return}if(r===`apply-promo`){_(be()?`medium`:`light`),Q();return}if(r===`clear-promo`){W(),R(),_(`light`),Q();return}if(r===`copy-promo`){Ue(t.getAttribute(`data-code`)||C.luck.promo?.code||N()?.code||``).then(e=>{_(e?`medium`:`light`)});return}if(r===`checkout`){Ge();return}if(r===`copy-order`){Ue(C.lastOrder?.text||``).then(e=>{let t=document.getElementById(`copy-status`);t&&(t.hidden=!1,t.textContent=e?`Скопировано — вставьте в чат с нами`:`Не удалось скопировать — выделите текст вручную`),_(e?`medium`:`light`)});return}})}),[`co-name`,`co-phone`,`co-telegram`,`co-comment`,`co-promo`].forEach(e=>{let t=document.getElementById(e);t&&t.addEventListener(`input`,()=>{if(W(),C.checkout.error){let e=C.checkout.phone,t=C.checkout.telegram.replace(/^@/,``).trim();if(e||t){C.checkout.error=``;let e=document.getElementById(`co-error`);e&&(e.textContent=``)}}})});let t=document.getElementById(`f-stl`);t&&t.addEventListener(`change`,()=>{$();let e=t.files?.[0];C.custom.stlName=e?e.name:``,Q()}),[`f-material`,`f-size`].forEach(e=>{let t=document.getElementById(e);t&&t.addEventListener(`change`,()=>{$(),Q()})})}we(),z(),Q(),E?console.info(`Telegram WebApp ready`,{version:E.version,platform:E.platform}):console.info(`Running outside Telegram — MainButton fallback available on cart.`);
+  `,ce.innerHTML=e,at(),Ke(),qe()}function $(){let e=document.getElementById(`f-material`),t=document.getElementById(`f-size`),n=document.getElementById(`f-comment`);e&&(C.custom.material=e.value),t&&(C.custom.size=t.value),n&&(C.custom.comment=n.value)}function at(){ce.querySelectorAll(`[data-action]`).forEach(t=>{t.addEventListener(`click`,n=>{let r=t.getAttribute(`data-action`),i=t.getAttribute(`data-id`);if(r===`back`){V();return}if(r===`toggle-theme`){le(),C.screen===`custom`&&$(),C.screen===`cart`&&W(),Q();return}if(r===`home`)return B(`home`);if(r===`home-tab`){C.homeTab=i||`all`,_(`light`),Q();return}if(r===`spin-luck`){Be();return}if(r===`cart`)return B(`cart`);if(r===`orders`){B(`orders`),J();return}if(r===`refresh-orders`){_(`light`),J(!0);return}if(r===`custom`)return B(`custom`);if(r===`open-product`)return B(`product`,{productId:i});if(r===`add-product`){let t=e.find(e=>e.id===i);t&&(xe(t,1),B(`cart`));return}if(r===`pick-color`){$(),C.custom.colorId=i,Q();return}if(r===`qty-minus`){$(),C.custom.qty=Math.max(1,C.custom.qty-1),Q();return}if(r===`qty-plus`){$(),C.custom.qty=Math.min(99,C.custom.qty+1),Q();return}if(r===`add-custom`){$(),Se(),B(`cart`);return}if(r===`remove`){Ce(i);return}if(r===`pick-payment`){W(),C.checkout.payment=t.getAttribute(`value`)||C.checkout.payment,C.checkout.error=``,Q();return}if(r===`open-sbp`){let e=t.getAttribute(`href`);if(E?.openLink&&e){n.preventDefault();try{E.openLink(e)}catch{window.open(e,`_blank`,`noopener,noreferrer`)}}return}if(r===`apply-promo`){_(be()?`medium`:`light`),Q();return}if(r===`clear-promo`){W(),R(),_(`light`),Q();return}if(r===`copy-promo`){Ue(t.getAttribute(`data-code`)||C.luck.promo?.code||N()?.code||``).then(e=>{_(e?`medium`:`light`)});return}if(r===`checkout`){Ge();return}if(r===`copy-order`){Ue(C.lastOrder?.text||``).then(e=>{let t=document.getElementById(`copy-status`);t&&(t.hidden=!1,t.textContent=e?`Скопировано — вставьте в чат с нами`:`Не удалось скопировать — выделите текст вручную`),_(e?`medium`:`light`)});return}})}),[`co-name`,`co-phone`,`co-telegram`,`co-comment`,`co-promo`].forEach(e=>{let t=document.getElementById(e);t&&t.addEventListener(`input`,()=>{if(W(),C.checkout.error){let e=C.checkout.phone,t=C.checkout.telegram.replace(/^@/,``).trim();if(e||t){C.checkout.error=``;let e=document.getElementById(`co-error`);e&&(e.textContent=``)}}})});let t=document.getElementById(`f-stl`);t&&t.addEventListener(`change`,()=>{$();let e=t.files?.[0];C.custom.stlName=e?e.name:``,Q()}),[`f-material`,`f-size`].forEach(e=>{let t=document.getElementById(e);t&&t.addEventListener(`change`,()=>{$(),Q()})})}we(),z(),Q(),E?console.info(`Telegram WebApp ready`,{version:E.version,platform:E.platform}):console.info(`Running outside Telegram — MainButton fallback available on cart.`);
