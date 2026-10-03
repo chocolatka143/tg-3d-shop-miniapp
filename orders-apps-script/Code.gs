@@ -10,6 +10,14 @@
  *   Тип триггера ОБЯЗАТЕЛЬНО: Из таблицы / При изменении (НЕ по времени, НЕ календарь).
  *   Клиент должен написать боту /start (иначе sendMessage по chat_id не дойдёт).
  *
+ * Кнопки статуса под уведомлением о новом заказе (чат CHAT_ID):
+ *   «В работе» / «Готов к выдаче» / «Выдан».
+ *   callback_data: s:<orderId>:wrk|rdy|out (≤64 байт).
+ *   Telegram шлёт callback_query на doPost БЕЗ WEBHOOK_SECRET.
+ *   Принимаем только если message.chat.id == CHAT_ID.
+ *   Скрипт сам пишет «Статус» и вызывает pushStatusForRow_ (onEdit от скрипта не срабатывает).
+ *   Один раз после деплоя: выполнить setTelegramWebhook() (или setTelegramWebhookUrl_).
+ *
  * Script Properties (Проект → Настройки проекта → Свойства скрипта):
  *   BOT_TOKEN        — токен бота от @BotFather
  *   CHAT_ID          — ваш chat id (куда слать уведомления о новых заказах)
@@ -92,12 +100,26 @@ function doOptions(e) {
 
 function doPost(e) {
   try {
+    var body = null;
+    var parseFailed = false;
+    try {
+      body = parseBody_(e);
+    } catch (parseErr) {
+      parseFailed = true;
+      body = null;
+    }
+
+    // Кнопки админа: Telegram присылает callback_query без WEBHOOK_SECRET.
+    // Заказы Mini App ниже по-прежнему требуют секрет.
+    if (body && typeof body === 'object' && body.callback_query) {
+      return handleAdminCallback_(body.callback_query);
+    }
+
     if (!checkSecret_(e)) {
       return json_({ ok: false, error: 'unauthorized' });
     }
 
-    var body = parseBody_(e);
-    if (!body || typeof body !== 'object') {
+    if (parseFailed || !body || typeof body !== 'object') {
       return json_({ ok: false, error: 'invalid_json' });
     }
 
@@ -223,24 +245,25 @@ function doPost(e) {
       lock.releaseLock();
     }
 
-    var tgOk = sendTelegram_(
-      buildTgMessage_({
-        dateRu: dateRu,
-        orderId: orderId,
-        name: name,
-        phone: phone,
-        username: username,
-        paymentLabel: paymentLabel,
-        comment: comment,
-        itemsText: itemsText,
-        total: total,
-        subtotal: subtotal,
-        promoCode: promoCode,
-        promoLabel: promoLabel,
-        discount: discount,
-        deliveryDiscountPending: deliveryDiscountPending,
-      })
-    );
+    var tgText = buildTgMessage_({
+      dateRu: dateRu,
+      orderId: orderId,
+      name: name,
+      phone: phone,
+      username: username,
+      paymentLabel: paymentLabel,
+      comment: comment,
+      itemsText: itemsText,
+      total: total,
+      subtotal: subtotal,
+      promoCode: promoCode,
+      promoLabel: promoLabel,
+      discount: discount,
+      deliveryDiscountPending: deliveryDiscountPending,
+    });
+    var tgOk = sendTelegram_(tgText, {
+      reply_markup: adminStatusKeyboard_(orderId),
+    });
 
     return json_({ ok: true, telegram: tgOk, order_id: orderId });
   } catch (err) {
@@ -605,35 +628,56 @@ function buildTgMessage_(o) {
 
 /**
  * Уведомление владельцу (CHAT_ID) о новом заказе.
+ * extra.reply_markup — inline-кнопки статуса (необязательно).
  */
-function sendTelegram_(text) {
+function sendTelegram_(text, extra) {
   var chatId = String(props_().getProperty('CHAT_ID') || '').trim();
-  return sendTelegramTo_(chatId, text).ok;
+  return sendTelegramTo_(chatId, text, extra).ok;
 }
 
 /**
  * sendMessage любому chat_id (числовой id или @username).
+ * extra может содержать reply_markup.
  * @return {{ok:boolean, code:number, body:string}}
  */
-function sendTelegramTo_(chatId, text) {
-  var token = String(props_().getProperty('BOT_TOKEN') || '').trim();
+function sendTelegramTo_(chatId, text, extra) {
   var id = String(chatId || '').trim();
-  if (!token || !id) {
+  if (!id) {
     return { ok: false, code: 0, body: 'missing_token_or_chat' };
   }
-  var url =
-    'https://api.telegram.org/bot' +
-    encodeURIComponent(token) +
-    '/sendMessage';
   var payload = {
     chat_id: id,
     text: text,
     disable_web_page_preview: true,
   };
+  if (extra && extra.reply_markup) {
+    payload.reply_markup = extra.reply_markup;
+  }
+  var result = telegramApi_('sendMessage', payload);
+  if (!String(props_().getProperty('BOT_TOKEN') || '').trim()) {
+    return { ok: false, code: 0, body: 'missing_token_or_chat' };
+  }
+  return result;
+}
+
+/**
+ * POST https://api.telegram.org/bot<token>/<method>
+ * @return {{ok:boolean, code:number, body:string}}
+ */
+function telegramApi_(method, payload) {
+  var token = String(props_().getProperty('BOT_TOKEN') || '').trim();
+  if (!token) {
+    return { ok: false, code: 0, body: 'missing_token' };
+  }
+  var url =
+    'https://api.telegram.org/bot' +
+    encodeURIComponent(token) +
+    '/' +
+    method;
   var res = UrlFetchApp.fetch(url, {
     method: 'post',
     contentType: 'application/json',
-    payload: JSON.stringify(payload),
+    payload: JSON.stringify(payload || {}),
     muteHttpExceptions: true,
   });
   var code = res.getResponseCode();
@@ -644,6 +688,272 @@ function sendTelegramTo_(chatId, text) {
     body = '';
   }
   return { ok: code >= 200 && code < 300, code: code, body: body };
+}
+
+/** Подписи статусов для callback_data wrk|rdy|out. */
+function statusLabelByShort_(short) {
+  if (short === 'wrk') return 'В работе';
+  if (short === 'rdy') return 'Готов к выдаче';
+  if (short === 'out') return 'Выдан';
+  return '';
+}
+
+/**
+ * Inline-клавиатура под новым заказом.
+ * callback_data ≤ 64 байт: s:<orderId>:wrk|rdy|out
+ */
+function adminStatusKeyboard_(orderId) {
+  var id = String(orderId == null ? '' : orderId);
+  return {
+    inline_keyboard: [
+      [
+        { text: 'В работе', callback_data: statusCallbackData_(id, 'wrk') },
+        { text: 'Готов к выдаче', callback_data: statusCallbackData_(id, 'rdy') },
+        { text: 'Выдан', callback_data: statusCallbackData_(id, 'out') },
+      ],
+    ],
+  };
+}
+
+function statusCallbackData_(orderId, short) {
+  var data = 's:' + String(orderId) + ':' + short;
+  // Лимит Telegram — 64 байта. Наши id короткие (1000+); на всякий случай режем id.
+  if (data.length > 64) {
+    var tail = ':' + short;
+    var keep = 64 - ('s:'.length + tail.length);
+    if (keep < 1) keep = 1;
+    data = 's:' + String(orderId).substring(0, keep) + tail;
+  }
+  return data;
+}
+
+function parseStatusCallbackData_(raw) {
+  var s = String(raw || '');
+  var m = s.match(/^s:(.+):(wrk|rdy|out)$/);
+  if (!m) return null;
+  var label = statusLabelByShort_(m[2]);
+  if (!label) return null;
+  return { orderId: m[1], short: m[2], label: label };
+}
+
+/**
+ * callback_query от Telegram. Секрет вебхука НЕ проверяем.
+ * Разрешён только чат из Script Property CHAT_ID.
+ */
+function handleAdminCallback_(cq) {
+  var cqId = cq && cq.id != null ? String(cq.id) : '';
+  try {
+    var adminChat = String(props_().getProperty('CHAT_ID') || '').trim();
+    var msg = cq && cq.message ? cq.message : null;
+    var fromChat = '';
+    if (msg && msg.chat && msg.chat.id != null) {
+      fromChat = String(msg.chat.id).trim();
+    }
+    if (!adminChat || !fromChat || fromChat !== adminChat) {
+      if (cqId) answerCallbackQuery_(cqId, 'Нет доступа');
+      Logger.log(
+        'admin callback denied fromChat=' + fromChat + ' expected=' + adminChat
+      );
+      return json_({ ok: false, error: 'unauthorized' });
+    }
+
+    var parsed = parseStatusCallbackData_(cq.data);
+    if (!parsed) {
+      answerCallbackQuery_(cqId, 'Неизвестная кнопка');
+      return json_({ ok: false, error: 'bad_callback' });
+    }
+
+    var sheet = getOrdersSheet_();
+    var map = headerIndexMap_(sheet);
+    var statusCol = map['Статус'];
+    if (statusCol == null) {
+      answerCallbackQuery_(cqId, 'Нет колонки Статус');
+      return json_({ ok: false, error: 'no_status_col' });
+    }
+
+    var row = findOrderRowById_(sheet, map, parsed.orderId);
+    if (row < 2) {
+      answerCallbackQuery_(cqId, 'Заказ не найден');
+      Logger.log('admin callback order not found ' + parsed.orderId);
+      return json_({ ok: false, error: 'order_not_found' });
+    }
+
+    var oldStatus = str_(sheet.getRange(row, statusCol + 1).getDisplayValue());
+    if (oldStatus !== parsed.label) {
+      sheet.getRange(row, statusCol + 1).setValue(parsed.label);
+    }
+
+    answerCallbackQuery_(cqId, 'Статус: ' + parsed.label);
+
+    // Правка ячейки из скрипта НЕ вызывает onEdit — пуш клиенту вручную.
+    if (oldStatus !== parsed.label) {
+      var lastCol = Math.max(sheet.getLastColumn(), HEADERS.length);
+      pushStatusForRow_(sheet, map, row, lastCol, parsed.label, oldStatus);
+    } else {
+      Logger.log(
+        'admin callback status unchanged order=' +
+          parsed.orderId +
+          ' status=' +
+          parsed.label
+      );
+    }
+
+    var baseText = '';
+    if (msg.text != null) baseText = String(msg.text);
+    else if (msg.caption != null) baseText = String(msg.caption);
+    var newText = withAdminStatusLine_(baseText, parsed.label);
+    var edit = editAdminMessage_(
+      fromChat,
+      msg.message_id,
+      newText,
+      adminStatusKeyboard_(parsed.orderId)
+    );
+    if (!edit.ok) {
+      Logger.log(
+        'editMessageText failed order=' +
+          parsed.orderId +
+          ' code=' +
+          edit.code +
+          ' body=' +
+          edit.body
+      );
+    }
+
+    return json_({
+      ok: true,
+      order_id: parsed.orderId,
+      status: parsed.label,
+    });
+  } catch (err) {
+    Logger.log(
+      'handleAdminCallback_ error: ' +
+        String(err && err.message ? err.message : err)
+    );
+    if (cqId) {
+      try {
+        answerCallbackQuery_(cqId, 'Ошибка, см. журнал');
+      } catch (err2) {}
+    }
+    return json_({
+      ok: false,
+      error: String(err && err.message ? err.message : err),
+    });
+  }
+}
+
+function findOrderRowById_(sheet, map, orderId) {
+  var col = map['order_id'];
+  if (col == null) return -1;
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return -1;
+  var want = String(orderId || '').trim();
+  if (!want) return -1;
+  var values = a1Range_(sheet, 2, col + 1, lastRow, col + 1).getDisplayValues();
+  for (var i = values.length - 1; i >= 0; i--) {
+    if (String(values[i][0] || '').trim() === want) return i + 2;
+  }
+  return -1;
+}
+
+function answerCallbackQuery_(callbackQueryId, text) {
+  var id = String(callbackQueryId || '').trim();
+  if (!id) return { ok: false, code: 0, body: 'no_callback_id' };
+  var payload = { callback_query_id: id };
+  if (text) payload.text = String(text).substring(0, 200);
+  return telegramApi_('answerCallbackQuery', payload);
+}
+
+function editAdminMessage_(chatId, messageId, text, replyMarkup) {
+  var payload = {
+    chat_id: String(chatId),
+    message_id: messageId,
+    text: text,
+    disable_web_page_preview: true,
+  };
+  if (replyMarkup) payload.reply_markup = replyMarkup;
+  return telegramApi_('editMessageText', payload);
+}
+
+/** Дописывает или заменяет строку «📌 Статус: …» в тексте админ-сообщения. */
+function withAdminStatusLine_(text, statusLabel) {
+  var raw = String(text || '');
+  var lines = raw.split('\n');
+  while (lines.length && /^\s*📌 Статус:/.test(lines[lines.length - 1])) {
+    lines.pop();
+  }
+  while (lines.length && String(lines[lines.length - 1]).trim() === '') {
+    lines.pop();
+  }
+  lines.push('');
+  lines.push('📌 Статус: ' + statusLabel);
+  var out = lines.join('\n');
+  if (out.length > 4000) {
+    out =
+      out.substring(0, 3900) +
+      '\n…\n\n📌 Статус: ' +
+      statusLabel;
+  }
+  return out;
+}
+
+/**
+ * Один раз после «Новая версия» веб-приложения: выполнить setTelegramWebhook.
+ * Ставит webhook бота на URL текущего развёртывания (кнопки callback_query).
+ * Если getUrl() пустой — выполните setTelegramWebhookUrl_('https://script.google.com/macros/s/XXX/exec')
+ * либо откройте в браузере:
+ *   https://api.telegram.org/bot<BOT_TOKEN>/setWebhook?url=<URL_/exec>
+ */
+function setTelegramWebhook() {
+  var url = '';
+  try {
+    var svc = ScriptApp.getService();
+    if (svc && svc.getUrl) url = String(svc.getUrl() || '').trim();
+  } catch (err) {
+    Logger.log(
+      'setTelegramWebhook getUrl error: ' +
+        String(err && err.message ? err.message : err)
+    );
+    url = '';
+  }
+  if (!url) {
+    Logger.log(
+      'setTelegramWebhook: ScriptApp.getService().getUrl() пустой. ' +
+        'Разверните веб-приложение (доступ: Все), скопируйте URL, который заканчивается на /exec, ' +
+        'и выполните setTelegramWebhookUrl_("https://script.google.com/macros/s/.../exec"). ' +
+        'Либо в браузере: https://api.telegram.org/bot<BOT_TOKEN>/setWebhook?url=<URL_EXEC>'
+    );
+    return;
+  }
+  setTelegramWebhookUrl_(url);
+}
+
+/**
+ * Поставить webhook на конкретный URL /exec (если getUrl() недоступен).
+ * Запуск из редактора: вставить URL в вызов или временно подставить строку и Выполнить.
+ */
+function setTelegramWebhookUrl_(url) {
+  var clean = String(url || '').trim();
+  if (!clean) {
+    Logger.log(
+      'setTelegramWebhookUrl_: пустой URL. Вставьте адрес веб-приложения, ' +
+        'например setTelegramWebhookUrl_("https://script.google.com/macros/s/XXX/exec")'
+    );
+    return;
+  }
+  var result = telegramApi_('setWebhook', {
+    url: clean,
+    allowed_updates: ['callback_query'],
+  });
+  Logger.log(
+    'setTelegramWebhook url=' +
+      clean +
+      ' ok=' +
+      result.ok +
+      ' code=' +
+      result.code +
+      ' body=' +
+      result.body
+  );
 }
 
 
