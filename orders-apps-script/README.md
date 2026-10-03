@@ -1,7 +1,7 @@
 # Приём заказов: Google Таблица + Telegram
 
 Маленький скрипт Google Apps Script принимает JSON от Mini App, пишет строку на лист **«Заказы»** и шлёт вам сообщение в Telegram.  
-Для ЛК: **POST** `{ secret, action: "list", telegram_user_id }` возвращает заказы пользователя (предпочтительно). GET `?key=&userId=` — запасной вариант.
+Для ЛК из Mini App: **POST** `{ initData, action: "list" }` — id берётся из проверенной подписи. Админ: **POST** `{ secret, action: "list", telegram_user_id }`. GET `?key=&userId=` — запасной вариант.
 
 Секреты (`BOT_TOKEN`, `CHAT_ID`, `WEBHOOK_SECRET`) хранятся только в свойствах скрипта Google — **не коммитьте их в git**.
 
@@ -58,7 +58,7 @@
 3. Описание: например `orders-v1`.
 4. **Выполнять от имени:** Меня.
 5. **У кого есть доступ:** Все (Anyone).  
-   Секрет всё равно проверяется через `?key=` / заголовок — без `WEBHOOK_SECRET` запросы отклоняются.
+   Заказы из Mini App проверяются по `initData`. GET и админский list — по свойству `WEBHOOK_SECRET`.
 6. Нажмите **Развернуть**, подтвердите права доступа к таблице и внешним запросам (Telegram).
 7. Скопируйте **URL веб-приложения** — вида  
    `https://script.google.com/macros/s/XXXX/exec`
@@ -67,15 +67,13 @@
 
 ## 5. Подключить Mini App
 
-В репозитории `src/data.js` в объекте `SHOP`:
+В репозитории `src/data.js` в объекте `SHOP` только URL:
 
 ```js
 orderWebhookUrl: 'https://script.google.com/macros/s/XXXX/exec',
-orderWebhookSecret: 'тот_же_WEBHOOK_SECRET',
 ```
 
-Пока оба поля пустые — магазин работает как раньше (копирование заказа + ссылка в Telegram).  
-**Не коммитьте реальный секрет в публичный репозиторий**, если репо открытое: подставьте значения только на машине деплоя / в приватной копии `data.js`.
+Секрет в Mini App не кладётся. Заказ шлёт `initData` (`Telegram.WebApp.initData`). Пока URL пустой — магазин работает как раньше (копирование заказа + ссылка в Telegram).
 
 После подстановки — соберите и выложите Mini App как обычно.
 
@@ -83,29 +81,9 @@ orderWebhookSecret: 'тот_же_WEBHOOK_SECRET',
 
 ### POST — новый заказ
 
-```bash
-curl -sS -X POST \
-  'https://script.google.com/macros/s/XXXX/exec' \
-  -H 'Content-Type: text/plain;charset=utf-8' \
-  -d '{
-    "secret": "ВАШ_СЕКРЕТ",
-    "order_id": "ord_test_001",
-    "telegram_user_id": 123456789,
-    "name": "Тест",
-    "phone": "+79990001122",
-    "username": "testuser",
-    "payment": "sbp",
-    "comment": "Проверка вебхука",
-    "items": [
-      {"name": "Кастомный брелок", "qty": 1, "price": 350, "material": "PLA"}
-    ],
-    "total": 350,
-    "createdAt": "2026-10-02T12:00:00.000Z"
-  }'
-```
-
-Ожидается JSON вроде `{"ok":true,"telegram":true,"order_id":"ord_test_001"}`.  
-В таблице появится строка со статусом **Новый**, в Telegram — сообщение о заказе.
+Заказ принимается только с валидным `initData` из Telegram (подпись, не старше суток).  
+Без него ответ: «Откройте магазин из Telegram». Проверка — тестовый заказ из Mini App.  
+Curl со секретом годится для **list** и GET, не для создания заказа.
 
 ### POST — список для ЛК (предпочтительно)
 
@@ -114,7 +92,7 @@ curl -sS -X POST \
   'https://script.google.com/macros/s/XXXX/exec' \
   -H 'Content-Type: text/plain;charset=utf-8' \
   -d '{
-    "secret": "ВАШ_СЕКРЕТ",
+    "secret": "<WEBHOOK_SECRET>",
     "action": "list",
     "telegram_user_id": 123456789
   }'
@@ -152,11 +130,11 @@ curl -sS 'https://script.google.com/macros/s/XXXX/exec?key=ВАШ_СЕКРЕТ&u
 | `discount` | number | Скидка в ₽ (может быть 0 при скидке на доставку без fee) |
 | `createdAt` | string ISO | Время создания |
 
-Авторизация: поле `secret` в JSON (предпочтительно), либо query `?key=`, либо заголовок `X-Webhook-Secret`.
+Авторизация заказа: поле `initData` (подпись Telegram). `WEBHOOK_SECRET` — для list/GET без Telegram (curl). Либо `secret` в JSON, либо `?key=`, либо заголовок `X-Webhook-Secret`.
 
 > **CORS:** браузерный `POST` с `Content-Type: application/json` часто упирается в preflight. Mini App шлёт тело как **`text/plain`** с JSON-строкой — так запрос «простой» и доходит до Apps Script без OPTIONS. В `Code.gs` есть `doOptions` на всякий случай.
 
-> **Безопасность ЛК:** MVP передаёт `userId` с клиента. Перед публичным ЛК нужна проверка подписи Telegram `initData` (см. LK-ORDERS.md).
+> **Безопасность:** заказ и список из Mini App без валидного `initData` отклоняются. Id пользователя для списка с `initData` берётся только из подписи, не из поля клиента.
 
 
 ## 8. Пуш клиенту при смене статуса

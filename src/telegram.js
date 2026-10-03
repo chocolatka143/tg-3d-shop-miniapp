@@ -144,3 +144,9 @@ export function haptic(type = 'light') {
 export function getUser() {
   return tg?.initDataUnsafe?.user || null;
 }
+
+/** Сырая строка Telegram.WebApp.initData для проверки на сервере. Пусто вне Telegram. */
+export function getInitData() {
+  const raw = tg?.initData;
+  return typeof raw === 'string' ? raw : '';
+}

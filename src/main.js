@@ -9,6 +9,7 @@ import {
   hideBackButton,
   haptic,
   getUser,
+  getInitData,
   applyTelegramChrome,
 } from './telegram.js';
 
@@ -494,10 +495,11 @@ function syncCheckoutFromDom() {
 
 function validateCheckout() {
   syncCheckoutFromDom();
-  const phone = state.checkout.phone;
+  const name = state.checkout.name.trim();
+  const phone = state.checkout.phone.trim();
   const tgContact = state.checkout.telegram.replace(/^@/, '').trim();
-  if (!phone && !tgContact) {
-    state.checkout.error = 'Укажите телефон или @username Telegram — так мы свяжемся с вами';
+  if (!name || !phone || !tgContact) {
+    state.checkout.error = 'Укажите имя, телефон и @username Telegram';
     return false;
   }
   state.checkout.error = '';
@@ -696,21 +698,17 @@ function normalizeLocalOrder(o) {
 
 async function fetchOrdersList() {
   const base = (SHOP.orderWebhookUrl || '').trim();
-  const secret = (SHOP.orderWebhookSecret || '').trim();
   if (!base) return { ok: false, skipped: true, error: 'no_webhook' };
-  if (!secret) return { ok: false, skipped: true, error: 'no_secret' };
 
-  const userId = getUser()?.id;
-  if (!userId) return { ok: false, error: 'no_user' };
+  const initData = getInitData();
+  if (!initData) return { ok: false, skipped: true, error: 'no_init_data' };
 
-  // Secret только в теле — Google redirect часто съедает ?key=
   const res = await fetch(base, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify({
-      secret,
       action: 'list',
-      telegram_user_id: userId,
+      initData,
     }),
   });
   let data = null;
@@ -951,28 +949,25 @@ async function copyText(text) {
   }
 }
 
+function isUserFacingError(msg) {
+  return /[А-Яа-яЁё]/.test(String(msg || ''));
+}
+
 async function sendOrderWebhook(order) {
   const base = (SHOP.orderWebhookUrl || '').trim();
   if (!base) return { sent: false, skipped: true };
 
-  const secret = (SHOP.orderWebhookSecret || '').trim();
-  let url = base;
-  if (secret) {
-    const sep = base.includes('?') ? '&' : '?';
-    url = `${base}${sep}key=${encodeURIComponent(secret)}`;
+  const initData = getInitData();
+  if (!initData) {
+    throw new Error('Откройте магазин из Telegram');
   }
 
   const username = (order.checkout.telegram || '').replace(/^@/, '').trim();
-  const tgUserId =
-    order.telegramUserId ??
-    order.user?.id ??
-    getUser()?.id ??
-    '';
   // order_id с клиента не шлём (pending_*): номер 1000+ выдаёт Apps Script.
+  // telegram_user_id сервер берёт из проверенного initData, не из этого поля.
   const payload = {
-    secret,
+    initData,
     order_id: '',
-    telegram_user_id: tgUserId,
     name: order.checkout.name || '',
     phone: order.checkout.phone || '',
     username,
@@ -994,7 +989,7 @@ async function sendOrderWebhook(order) {
   };
 
   // text/plain — простой запрос без CORS preflight к Apps Script
-  const res = await fetch(url, {
+  const res = await fetch(base, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify(payload),
@@ -1088,6 +1083,16 @@ async function placeOrder() {
       order.text = formatOrderText(order);
     }
   } catch (err) {
+    const msg = String(err && err.message ? err.message : err);
+    if (isUserFacingError(msg)) {
+      state.checkout.submitting = false;
+      state.checkout.error = msg;
+      haptic('light');
+      render();
+      const errEl = document.getElementById('co-error');
+      if (errEl) errEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
     console.warn('Order webhook failed, fallback to copy/Telegram', err);
     order.webhookOk = false;
   }
@@ -1525,20 +1530,20 @@ function renderCart() {
         </p>
 
         <div class="form-group">
-          <label for="co-name">Имя <span class="opt">(необязательно)</span></label>
-          <input type="text" id="co-name" autocomplete="name" placeholder="Как к вам обращаться" value="${escapeHtml(co.name)}" />
+          <label for="co-name">Имя</label>
+          <input type="text" id="co-name" autocomplete="name" placeholder="Как к вам обращаться" value="${escapeHtml(co.name)}" required />
         </div>
 
         <div class="form-group">
           <label for="co-phone">Телефон</label>
-          <input type="tel" id="co-phone" autocomplete="tel" inputmode="tel" placeholder="+7 …" value="${escapeHtml(co.phone)}" />
+          <input type="tel" id="co-phone" autocomplete="tel" inputmode="tel" placeholder="+7 …" value="${escapeHtml(co.phone)}" required />
         </div>
 
         <div class="form-group">
           <label for="co-telegram">Telegram @username</label>
-          <input type="text" id="co-telegram" autocomplete="username" placeholder="@username" value="${escapeHtml(co.telegram)}" />
+          <input type="text" id="co-telegram" autocomplete="username" placeholder="@username" value="${escapeHtml(co.telegram)}" required />
         </div>
-        <p class="field-hint">Нужен хотя бы один контакт: телефон или @username.</p>
+        <p class="field-hint">Имя, телефон и @username обязательны.</p>
 
         <div class="form-group">
           <label for="co-promo">Промокод <span class="opt">(необязательно)</span></label>

@@ -1,8 +1,13 @@
 /**
  * Бубер 3D — приём заказов в Google Таблицу + уведомление в Telegram.
  * Список заказов для ЛК (предпочтительно):
- *   POST JSON { secret, action: "list", telegram_user_id }
- * GET ?key=&userId= — запасной вариант (редирект Google может съесть ?key=).
+ *   POST JSON { initData, action: "list" } — user id из проверенного initData.
+ *   POST JSON { secret, action: "list", telegram_user_id } — админ/curl (WEBHOOK_SECRET).
+ * GET ?key=&userId= — запасной вариант для админа (редирект Google может съесть ?key=).
+ *
+ * Заказ из Mini App: POST JSON { initData, name, phone, ... } без секрета клиента.
+ * initData: HMAC WebApp data-check-string с BOT_TOKEN.
+ * Нет initData → «Откройте магазин из Telegram». Старше 1 суток или битая подпись — отказ.
  *
  * Пуш клиенту при смене статуса:
  *   installable onEdit → onOrdersStatusEdit(e) на лист «Заказы», колонка «Статус».
@@ -21,7 +26,7 @@
  * Script Properties (Проект → Настройки проекта → Свойства скрипта):
  *   BOT_TOKEN        — токен бота от @BotFather
  *   CHAT_ID          — ваш chat id (куда слать уведомления о новых заказах)
- *   WEBHOOK_SECRET   — общий секрет (в JSON body.secret / ?key= / X-Webhook-Secret)
+ *   WEBHOOK_SECRET   — секрет админ/curl (list и GET). Заказы Mini App его не шлют.
  *   TEST_CHAT_ID     — опционально: chat id для testStatusPush()
  *
  * Деплой: Развернуть → Новое развёртывание → Веб-приложение
@@ -55,7 +60,8 @@ var HEADERS = [
  *   ?key=SECRET              — health-check
  *   ?key=SECRET&userId=123   — заказы этого telegram_user_id (для ЛК)
  *
- * MVP: userId с клиента (initDataUnsafe). Позже — verify initData.
+ * GET остаётся для админа: нужен WEBHOOK_SECRET (?key=).
+ * Список из Mini App идёт POST с initData, не этим GET.
  */
 function doGet(e) {
   if (!checkSecret_(e)) {
@@ -110,13 +116,9 @@ function doPost(e) {
     }
 
     // Кнопки админа: Telegram присылает callback_query без WEBHOOK_SECRET.
-    // Заказы Mini App ниже по-прежнему требуют секрет.
+    // Заказы Mini App проверяются по initData, не по секрету.
     if (body && typeof body === 'object' && body.callback_query) {
       return handleAdminCallback_(body.callback_query);
-    }
-
-    if (!checkSecret_(e)) {
-      return json_({ ok: false, error: 'unauthorized' });
     }
 
     if (parseFailed || !body || typeof body !== 'object') {
@@ -124,16 +126,28 @@ function doPost(e) {
     }
 
     var action = str_(body.action || '').toLowerCase();
+    var initRaw = str_(body.initData || body.init_data || '');
     if (action === 'list') {
-      var listUid = str_(
-        body.telegram_user_id != null
-          ? body.telegram_user_id
-          : body.telegramUserId != null
-            ? body.telegramUserId
-            : body.userId != null
-              ? body.userId
-              : ''
-      );
+      var listUid = '';
+      if (initRaw) {
+        var listedAuth = verifyTelegramInitData_(initRaw);
+        if (!listedAuth.ok) {
+          return json_({ ok: false, error: listedAuth.error });
+        }
+        listUid = listedAuth.userId;
+      } else if (checkSecret_(e)) {
+        listUid = str_(
+          body.telegram_user_id != null
+            ? body.telegram_user_id
+            : body.telegramUserId != null
+              ? body.telegramUserId
+              : body.userId != null
+                ? body.userId
+                : ''
+        );
+      } else {
+        return json_({ ok: false, error: 'unauthorized' });
+      }
       if (!listUid) {
         return json_({ ok: false, error: 'need_user_id' });
       }
@@ -146,6 +160,17 @@ function doPost(e) {
           error: String(listErr && listErr.message ? listErr.message : listErr),
         });
       }
+    }
+
+    if (!initRaw) {
+      return json_({ ok: false, error: 'Откройте магазин из Telegram' });
+    }
+    var orderAuth = verifyTelegramInitData_(initRaw);
+    if (!orderAuth.ok) {
+      return json_({ ok: false, error: orderAuth.error });
+    }
+    if (!orderAuth.userId) {
+      return json_({ ok: false, error: 'Откройте магазин из Telegram' });
     }
 
     var name = str_(body.name);
@@ -165,18 +190,11 @@ function doPost(e) {
     );
     var createdAt = str_(body.createdAt) || new Date().toISOString();
     var itemsText = formatItems_(body.items);
-    var telegramUserId = str_(
-      body.telegram_user_id != null
-        ? body.telegram_user_id
-        : body.telegramUserId != null
-          ? body.telegramUserId
-          : body.user && body.user.id != null
-            ? body.user.id
-            : ''
-    );
+    // id только из проверенного initData — поле с клиента игнорируем.
+    var telegramUserId = orderAuth.userId;
 
-    if (!name && !phone && !username) {
-      return json_({ ok: false, error: 'need_contact' });
+    if (!name || !phone || !username) {
+      return json_({ ok: false, error: 'Укажите имя, телефон и @username Telegram' });
     }
 
     var paymentLabel = payment === 'cash' ? 'Наличные' : 'СБП';
@@ -318,6 +336,124 @@ function checkSecret_(e) {
     }
   }
   return String(provided) === expected;
+}
+
+/**
+ * Проверка Telegram.WebApp.initData (query string).
+ * secret_key = HMAC_SHA256(key="WebAppData", msg=BOT_TOKEN)
+ * hash = hex(HMAC_SHA256(key=secret_key, msg=data_check_string))
+ * data_check_string: все поля кроме hash, по алфавиту, key=value через перевод строки.
+ * auth_date старше 1 суток — отказ. Токен и initData в журнал не пишем.
+ */
+function verifyTelegramInitData_(initData) {
+  var fail = function (message) {
+    return { ok: false, error: message, userId: '' };
+  };
+  var token = String(props_().getProperty('BOT_TOKEN') || '').trim();
+  if (!token) {
+    return fail('Не удалось подтвердить вход из Telegram');
+  }
+  var raw = String(initData || '').trim();
+  if (raw.charAt(0) === '?') raw = raw.substring(1);
+  if (!raw) {
+    return fail('Откройте магазин из Telegram');
+  }
+
+  var parts = raw.split('&');
+  var hash = '';
+  var fields = [];
+  var userJson = '';
+  var authDate = NaN;
+  for (var i = 0; i < parts.length; i++) {
+    var part = parts[i];
+    if (!part) continue;
+    var eq = part.indexOf('=');
+    var keyEnc = eq < 0 ? part : part.substring(0, eq);
+    var valEnc = eq < 0 ? '' : part.substring(eq + 1);
+    var key;
+    var val;
+    try {
+      key = decodeURIComponent(String(keyEnc).replace(/\+/g, ' '));
+      val = decodeURIComponent(String(valEnc).replace(/\+/g, ' '));
+    } catch (decErr) {
+      return fail('Не удалось подтвердить вход из Telegram');
+    }
+    if (key === 'hash') {
+      hash = val;
+    } else {
+      fields.push({ key: key, val: val });
+      if (key === 'user') userJson = val;
+      if (key === 'auth_date') authDate = Number(val);
+    }
+  }
+  if (!hash) {
+    return fail('Не удалось подтвердить вход из Telegram');
+  }
+
+  fields.sort(function (a, b) {
+    if (a.key < b.key) return -1;
+    if (a.key > b.key) return 1;
+    return 0;
+  });
+  var lines = [];
+  for (var j = 0; j < fields.length; j++) {
+    lines.push(fields[j].key + '=' + fields[j].val);
+  }
+  var dataCheck = lines.join('\n');
+
+  var secretKey = Utilities.computeHmacSha256Signature(token, 'WebAppData');
+  var sig = Utilities.computeHmacSha256Signature(dataCheck, secretKey);
+  var calc = bytesToHex_(sig);
+  if (!timingSafeEqual_(calc, String(hash).toLowerCase())) {
+    return fail('Не удалось подтвердить вход из Telegram');
+  }
+
+  if (!isFinite(authDate)) {
+    return fail('Не удалось подтвердить вход из Telegram');
+  }
+  var nowSec = Math.floor(Date.now() / 1000);
+  if (authDate > nowSec + 300) {
+    return fail('Не удалось подтвердить вход из Telegram');
+  }
+  if (nowSec - authDate > 86400) {
+    return fail('Сессия Telegram устарела. Закройте магазин и откройте снова.');
+  }
+
+  var userId = '';
+  if (userJson) {
+    try {
+      var user = JSON.parse(userJson);
+      if (user && user.id != null && String(user.id) !== '') {
+        userId = String(user.id);
+      }
+    } catch (userErr) {
+      userId = '';
+    }
+  }
+  return { ok: true, error: '', userId: userId };
+}
+
+function bytesToHex_(bytes) {
+  var hex = [];
+  for (var i = 0; i < bytes.length; i++) {
+    var b = bytes[i];
+    if (b < 0) b += 256;
+    var s = b.toString(16);
+    if (s.length < 2) s = '0' + s;
+    hex.push(s);
+  }
+  return hex.join('');
+}
+
+function timingSafeEqual_(a, b) {
+  a = String(a);
+  b = String(b);
+  if (a.length !== b.length) return false;
+  var diff = 0;
+  for (var i = 0; i < a.length; i++) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
 }
 
 function parseBody_(e) {

@@ -79,7 +79,7 @@
 
 ## 3. Apps Script API
 
-Авторизация: секрет в JSON-поле `secret` (предпочтительно — Google часто съедает `?key=` на редиректе), либо `?key=`, либо заголовок `X-Webhook-Secret`.
+Авторизация Mini App: поле `initData`. Админ/curl: секрет в JSON-поле `secret`, либо `?key=`, либо заголовок `X-Webhook-Secret` (для list и GET, не для заказа из магазина).
 
 ### POST — создать заказ
 
@@ -88,9 +88,7 @@
 
 ```json
 {
-  "secret": "WEBHOOK_SECRET",
-  "order_id": "ord_…",
-  "telegram_user_id": 123456789,
+  "initData": "<Telegram.WebApp.initData>",
   "name": "…",
   "phone": "…",
   "username": "…",
@@ -102,20 +100,25 @@
 }
 ```
 
-Ответ: `{ "ok": true, "telegram": true/false, "order_id": "…" }`.  
-В лист пишется строка со статусом **Новый**.
+Без `initData`: `{ "ok": false, "error": "Откройте магазин из Telegram" }`.  
+Ответ при успехе: `{ "ok": true, "telegram": true/false, "order_id": "…" }`.  
+`telegram_user_id` в таблицу берётся из проверенного `initData`. Имя, телефон и username обязательны.
 
 ### POST — список заказов пользователя (для ЛК, предпочтительно)
 
 `POST …/exec`  
 Тело:
 
+Mini App:
+
 ```json
-{
-  "secret": "WEBHOOK_SECRET",
-  "action": "list",
-  "telegram_user_id": 123456789
-}
+{ "action": "list", "initData": "<Telegram.WebApp.initData>" }
+```
+
+Админ/curl (свойство скрипта, не клиент):
+
+```json
+{ "action": "list", "secret": "<WEBHOOK_SECRET>", "telegram_user_id": 123456789 }
 ```
 
 Ответ:
@@ -153,7 +156,7 @@ GET …/exec?key=WEBHOOK_SECRET&userId=123456789
 Без `userId` — health-check: `{ ok, service, sheet, time }`.  
 С `userId` — тот же массив `orders`, что у POST list.
 
-> **Замечание:** при редиректе Google query `?key=` иногда теряется. Mini App использует **POST + secret в теле**. GET оставлен для ручных проверок curl.
+> **Замечание:** Mini App ходит POST с `initData` в теле. GET с `?key=` — только ручная проверка; на редиректе Google query иногда теряется.
 
 ---
 
@@ -161,13 +164,12 @@ GET …/exec?key=WEBHOOK_SECRET&userId=123456789
 
 | Слой | MVP (сейчас) | Позже |
 |------|--------------|--------|
-| Секрет вебхука | `secret` в JSON / `?key=` | то же + ротация |
-| Кто я в Mini App | `initDataUnsafe.user.id` с клиента | **проверка подписи `initData`** на сервере (HMAC с bot token) |
-| Чтение чужих заказов | теоретически: подставить чужой id | после verify initData — брать id только из проверенных данных |
+| Секрет вебхука | только админ/curl (`secret` / `?key=`), не в Mini App | ротация в свойствах скрипта |
+| Кто я в Mini App | **подпись `initData`** (HMAC, bot token), id из проверенных данных | — |
+| Чтение чужих заказов | list с `initData` берёт id только из подписи | — |
 | CORS | POST как `text/plain` | при необходимости прокси на своём домене |
 
-**Итог для MVP:** передаём `telegram_user_id` из WebApp — удобно для демо.  
-**Перед публичным ЛК с живыми клиентами:** обязательно verify `initData`.
+**Заказы и список из Mini App** принимаются только с валидным `initData` (не старше 1 суток). Без Telegram ответ: «Откройте магазин из Telegram».
 
 Секреты (`BOT_TOKEN`, `CHAT_ID`, `WEBHOOK_SECRET`) — только в свойствах скрипта, не в git.
 
@@ -176,10 +178,10 @@ GET …/exec?key=WEBHOOK_SECRET&userId=123456789
 ## 5. Mini App
 
 - В шапке / навигации: **«Мои заказы»**.
-- При открытии: `POST { secret, action: "list", telegram_user_id }` → бейджи статусов.
+- При открытии: `POST { initData, action: "list" }` → бейджи статусов. Id пользователя берётся из `initData`.
 - Кнопка **«Обновить статусы»** — повторный запрос.
 - Если запрос не удался → fallback на `localStorage` (`tg3d_orders_v1`) со статусом на момент оформления.
-- При оформлении в payload уходят `order_id`, `telegram_user_id` и `secret`.
+- При оформлении в payload уходит `initData` (сырая строка `Telegram.WebApp.initData`), без секрета.
 
 ### Пуш при смене статуса
 
@@ -197,10 +199,10 @@ GET …/exec?key=WEBHOOK_SECRET&userId=123456789
 ## 6. Чеклист внедрения
 
 1. [x] Таблица + Apps Script (`Code.gs`) + свойства + веб-приложение → URL `/exec`.
-2. [x] В `src/data.js`: `orderWebhookUrl`, `orderWebhookSecret`.
+2. [x] В `src/data.js`: только `orderWebhookUrl` (секрета в клиенте нет).
 3. [x] Сборка / деплой Mini App.
 4. [x] Тест POST create → строка **Новый** + Telegram.
 5. [x] Тест POST `action: "list"` → заказы в JSON.
 6. [x] В Mini App: «Мои заказы» показывает статусы с таблицы.
 7. [ ] Пуш при смене статуса: вставить `Code.gs` + `installTrigger()` + клиент `/start`.
-8. [ ] Verify `initData` перед продом ЛК.
+8. [x] Verify `initData` (HMAC, не старше 1 суток) для заказа и списка.
