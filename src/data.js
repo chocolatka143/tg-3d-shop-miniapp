@@ -87,6 +87,7 @@ export const LUCK_SEGMENTS = [
 export const STATIC_PROMO_CODES = [
   { code: 'BUBER5', type: 'order_percent', value: 5, label: 'Скидка 5% на заказ' },
   { code: 'BUBER7', type: 'order_percent', value: 7, label: 'Скидка 7% на заказ' },
+  { code: 'LATEST5', type: 'order_percent', value: 5, label: 'Тестовая скидка 5% на заказ' },
   { code: 'DOST5', type: 'delivery_percent', value: 5, label: 'Скидка 5% на доставку' },
   { code: 'DOST7', type: 'delivery_percent', value: 7, label: 'Скидка 7% на доставку' },
 ];

@@ -17,6 +17,7 @@ const THEME_KEY = 'buber-theme';
 const ORDERS_KEY = 'tg3d_orders_v1';
 const PROMO_KEY = 'tg3d_promo_v1';
 const PROMO_USED_KEY = 'tg3d_promo_used_v1';
+const REUSABLE_PROMO_CODES = new Set(['LATEST5']);
 const LUCK_SPIN_DURATION_MS = 3400;
 
 /** @typedef {{ type: 'product'|'custom', id: string, name: string, price: number, qty: number, emoji?: string, color?: string, material?: string, size?: string, stlName?: string, comment?: string, productColor?: string }} CartItem */
@@ -130,6 +131,10 @@ function normalizePromoCode(code) {
     .replace(/\s+/g, '');
 }
 
+function isReusablePromoCode(code) {
+  return REUSABLE_PROMO_CODES.has(normalizePromoCode(code));
+}
+
 function loadUsedPromoCodes() {
   try {
     const list = JSON.parse(localStorage.getItem(PROMO_USED_KEY) || '[]');
@@ -141,7 +146,7 @@ function loadUsedPromoCodes() {
 
 function markPromoUsed(code) {
   const c = normalizePromoCode(code);
-  if (!c) return;
+  if (!c || isReusablePromoCode(c)) return;
   const used = loadUsedPromoCodes();
   if (!used.includes(c)) {
     used.push(c);
@@ -239,7 +244,7 @@ function resolvePromoCode(rawCode) {
   if (!code) return { ok: false, error: 'Введите промокод' };
 
   const used = loadUsedPromoCodes();
-  if (used.includes(code)) {
+  if (!isReusablePromoCode(code) && used.includes(code)) {
     return { ok: false, error: 'Этот промокод уже использован на этом устройстве' };
   }
 
@@ -1537,7 +1542,7 @@ function renderCart() {
           </div>
           ${promoOk}
           ${promoErr}
-          <p class="field-hint">Код с колеса удачи или статичный (BUBER5 / BUBER7 / DOST5 / DOST7). Одноразово на устройстве.</p>
+          <p class="field-hint">Код с колеса удачи или статичный (BUBER5 / BUBER7 / LATEST5 / DOST5 / DOST7). Все, кроме LATEST5, одноразовые на устройстве.</p>
         </div>
 
         <div class="form-group">
