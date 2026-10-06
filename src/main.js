@@ -1533,16 +1533,6 @@ function renderCart() {
     </label>`
   ).join('');
 
-  const sbpPayment =
-    co.payment === 'sbp'
-      ? `<div class="sbp-payment">
-          <p class="sbp-payment-title">Оплата по СБП</p>
-          <p class="sbp-recipient"><span>Получатель</span> Миронова Мария Геннадьевна</p>
-          <a class="btn btn-primary sbp-pay-btn" data-action="open-sbp" href="https://www.tbank-online.com/rm/r_ljmtSjOfvP.AvVhabUyZQ/dn0Mj26413" target="_blank" rel="noopener noreferrer">Оплатить по СБП</a>
-          <img class="sbp-qr" src="/assets/sbp-qr.jpg" alt="QR-код для оплаты по СБП" loading="lazy" width="640" height="640" />
-          <p class="sbp-receipt-note">После оплаты пришлём чек самозанятого</p>
-        </div>`
-      : '';
   const sbpNote =
     co.payment === 'sbp'
       ? `<p class="checkout-note">${escapeHtml(SHOP.sbpHint)}</p>`
@@ -1648,7 +1638,6 @@ function renderCart() {
           <div class="pay-list">${payRadios}</div>
         </div>
         ${sbpNote}
-        ${sbpPayment}
 
         <div class="form-group">
           <label for="co-comment">Комментарий к доставке / встрече <span class="opt">(необязательно)</span></label>
@@ -1946,18 +1935,6 @@ function bindEvents() {
         state.checkout.payment = el.getAttribute('value') || state.checkout.payment;
         state.checkout.error = '';
         render();
-        return;
-      }
-      if (action === 'open-sbp') {
-        const url = el.getAttribute('href');
-        if (tg?.openLink && url) {
-          e.preventDefault();
-          try {
-            tg.openLink(url);
-          } catch (_) {
-            window.open(url, '_blank', 'noopener,noreferrer');
-          }
-        }
         return;
       }
       if (action === 'apply-promo') {
