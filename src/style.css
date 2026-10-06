@@ -274,7 +274,7 @@ body {
 
 
 .card-img {
-  height: 110px;
+  aspect-ratio: 1 / 1;
   display: grid;
   place-items: center;
   font-size: 2.6rem;
@@ -306,6 +306,35 @@ body {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+/* Product photos */
+.card-img--photo {
+  overflow: hidden;
+  font-size: 0;
+}
+
+.card-img--photo img,
+.detail-img--photo img,
+.thumb--photo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 65%;
+}
+
+.detail-img--photo {
+  height: auto;
+  aspect-ratio: 4 / 5;
+  max-height: 60vh;
+  overflow: hidden;
+  font-size: 0;
+}
+
+.thumb--photo {
+  overflow: hidden;
+  padding: 0;
 }
 
 /* Product detail */

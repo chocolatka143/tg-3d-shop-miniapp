@@ -23,7 +23,7 @@ const LUCK_DEVICE_KEY = 'tg3d_luck_device_v1';
 const REUSABLE_PROMO_CODES = new Set(['LATEST5']);
 const LUCK_SPIN_DURATION_MS = 3400;
 
-/** @typedef {{ type: 'product'|'custom', id: string, name: string, price: number, qty: number, emoji?: string, color?: string, material?: string, size?: string, stlName?: string, comment?: string, productColor?: string }} CartItem */
+/** @typedef {{ type: 'product'|'custom', id: string, name: string, price: number, qty: number, emoji?: string, image?: string, color?: string, material?: string, size?: string, stlName?: string, comment?: string, productColor?: string }} CartItem */
 
 const state = {
   screen: 'home', // home | product | custom | cart | success | orders
@@ -408,6 +408,7 @@ function addProductToCart(product, qty = 1) {
       price: product.price,
       qty,
       emoji: product.emoji,
+      image: product.image,
       productColor: product.color,
       material: product.material,
     });
@@ -1261,6 +1262,9 @@ function productsForTab(tab) {
   if (tab === 'filament') {
     return PRODUCTS.filter((p) => p.category === 'filament' || p.id === 'p-filament');
   }
+  if (tab === 'figures') {
+    return PRODUCTS.filter((p) => p.category === 'figures');
+  }
   return PRODUCTS;
 }
 
@@ -1272,7 +1276,9 @@ function renderProductCards(list) {
     .map(
       (p) => `
     <article class="card" data-action="open-product" data-id="${p.id}">
-      <div class="card-img" style="background:${p.color}33">${p.emoji}</div>
+      ${p.image
+        ? `<div class="card-img card-img--photo" style="background:${p.color}33"><img src="${escapeHtml(p.image)}" alt="${escapeHtml(p.name)}" loading="lazy" /></div>`
+        : `<div class="card-img" style="background:${p.color}33">${p.emoji}</div>`}
       <div class="card-body">
         <h3>${escapeHtml(p.name)}</h3>
         <div class="price">${formatRub(p.price)}</div>
@@ -1307,13 +1313,8 @@ function renderTabContent() {
   }
   if (tab === 'figures') {
     return `
-      <div class="placeholder-panel">
-        <div class="emoji">🧍</div>
-        <h3>Фигурки</h3>
-        <p class="placeholder-badge">В разработке</p>
-        <p>Скоро здесь появятся готовые фигурки. Пока можно заказать через «Свой вариант».</p>
-        <button class="btn btn-primary" data-action="custom">✨ Свой вариант</button>
-      </div>`;
+      <h3 class="section-title">Фигурки</h3>
+      ${renderProductCards(productsForTab('figures'))}`;
   }
   if (tab === 'faq') {
     const items = FAQ_ITEMS.map(
@@ -1395,7 +1396,9 @@ function renderProduct() {
   return `
     ${header(p.name, { back: true })}
     <div class="screen">
-      <div class="detail-img" style="background:${p.color}44">${p.emoji}</div>
+      ${p.image
+        ? `<div class="detail-img detail-img--photo" style="background:${p.color}44"><img src="${escapeHtml(p.image)}" alt="${escapeHtml(p.name)}" /></div>`
+        : `<div class="detail-img" style="background:${p.color}44">${p.emoji}</div>`}
       <div class="detail-price">${formatRub(p.price)}</div>
       <div class="detail-meta">
         <span class="chip">Материал: ${escapeHtml(p.material)}</span>
@@ -1507,7 +1510,7 @@ function renderCart() {
       if (i.comment) metaParts.push(i.comment);
       return `
       <div class="cart-item">
-        <div class="thumb" style="background:${i.productColor || '#444'}44">${i.emoji || '📦'}</div>
+        <div class="thumb${i.image ? ' thumb--photo' : ''}" style="background:${i.productColor || '#444'}44">${i.image ? `<img src="${escapeHtml(i.image)}" alt="" loading="lazy" />` : i.emoji || '📦'}</div>
         <div class="info">
           <h4>${escapeHtml(i.name)} × ${i.qty}</h4>
           <div class="meta">${escapeHtml(metaParts.join(' · ') || '—')}</div>
