@@ -28,7 +28,7 @@ const LUCK_SPIN_DURATION_MS = 3400;
 const state = {
   screen: 'home', // home | product | custom | cart | success | orders
   productId: null,
-  homeTab: 'all', // all | filament | figures | faq | portfolio | reviews
+  homeTab: 'all', // all | filament | figures | clickers | faq | portfolio | reviews | luck
   // Previous logical routes for the in-app and Telegram back buttons.
   history: [],
   cart: loadCart(),
@@ -1265,6 +1265,9 @@ function productsForTab(tab) {
   if (tab === 'figures') {
     return PRODUCTS.filter((p) => p.category === 'figures');
   }
+  if (tab === 'clickers') {
+    return PRODUCTS.filter((p) => p.category === 'clickers');
+  }
   return PRODUCTS;
 }
 
@@ -1315,6 +1318,11 @@ function renderTabContent() {
     return `
       <h3 class="section-title">Фигурки</h3>
       ${renderProductCards(productsForTab('figures'))}`;
+  }
+  if (tab === 'clickers') {
+    return `
+      <h3 class="section-title">Кликеры</h3>
+      ${renderProductCards(productsForTab('clickers'))}`;
   }
   if (tab === 'faq') {
     const items = FAQ_ITEMS.map(
