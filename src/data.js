@@ -72,6 +72,18 @@ export const PRODUCTS = [
     image: '/assets/clickers/berry-tarts.jpg',
   },
   {
+    id: 'clk-pizza',
+    name: 'Кликер «Пицца»',
+    price: 690,
+    short: 'Фижет-кликер в виде пиццы',
+    desc: '3D-печать, кликер. Тестовая цена.',
+    color: '#e67e22',
+    emoji: '🍕',
+    material: 'PLA',
+    category: 'clickers',
+    image: '/assets/clickers/pizza.jpg',
+  },
+  {
     id: 'p3',
     name: 'Корпус для электроники',
     price: 890,
